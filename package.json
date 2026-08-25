@@ -1,0 +1,16 @@
+{
+  "name": "papirio",
+  "version": "1.0.0",
+  "description": "Paper.io Clone in Web Canvas",
+  "scripts": {
+    "dev": "npx -y http-server -p 3000"
+  },
+  "keywords": [
+    "paper.io",
+    "game",
+    "canvas",
+    "html5"
+  ],
+  "author": "",
+  "license": "ISC"
+}
