@@ -1,6 +1,8 @@
 /**
  * AI Bot class for Papirio
  */
+import { findClosestOwnedCell } from './src/domain/grid-search.js';
+
 export class Bot {
     constructor(id, name, color, startGridX, startGridY, gridSize) {
         this.id = id;
@@ -276,25 +278,7 @@ export class Bot {
      * Find the coordinates of the closest cell owned by this bot
      */
     findClosestOwnedCell(game) {
-        let closest = null;
-        let minDist = Infinity;
-
-        // Scan the grid to find owned cells. 
-        // Note: For large grids, scanning all cells can be slow if done too often,
-        // but for 150x150 it takes less than 1ms.
-        for (let x = 0; x < this.gridSize; x++) {
-            for (let y = 0; y < this.gridSize; y++) {
-                if (game.grid[x][y].ownerId === this.id) {
-                    const dist = Math.abs(this.gridX - x) + Math.abs(this.gridY - y);
-                    if (dist < minDist) {
-                        minDist = dist;
-                        closest = { x, y };
-                    }
-                }
-            }
-        }
-
-        return closest;
+        return findClosestOwnedCell(game.grid, this.gridX, this.gridY, this.gridSize, this.id);
     }
 
     /**

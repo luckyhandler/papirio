@@ -1,53 +1,10 @@
-import { Bot } from './bot.js?v=6';
-
-// Predefined neon colors and their RGB mappings
-const NEON_COLORS = {
-    '#00f3ff': { r: 0, g: 243, b: 255 },    // Neon Cyan
-    '#ff007f': { r: 255, g: 0, b: 127 },    // Neon Pink
-    '#39ff14': { r: 57, g: 255, b: 20 },    // Neon Green
-    '#ffaa00': { r: 255, g: 170, b: 0 },    // Neon Orange
-    '#b026ff': { r: 176, g: 38, b: 255 },   // Neon Purple
-    '#ff3333': { r: 255, g: 51, b: 51 },    // Neon Red
-    '#ffff00': { r: 255, g: 255, b: 0 },    // Neon Yellow
-    '#ff00ff': { r: 255, g: 0, b: 255 },    // Neon Magenta
-    '#a6ff00': { r: 166, g: 255, b: 0 },    // Neon Lime
-    '#00ffd5': { r: 0, g: 255, b: 213 }     // Neon Turquoise
-};
-
-const BOT_NAMES = [
-    'Shadow', 'Vortex', 'Apex', 'Matrix', 'Cosmo', 
-    'Echo', 'Blaze', 'Frost', 'Pixel', 'Rogue', 
-    'Alpha', 'Spectre', 'Helix', 'Nova', 'Titan'
-];
-
-const GRID_SIZE = 150;
-const CELL_SIZE = 24; // size in pixels
-const TICK_INTERVAL = 60; // ms per sub-tick (base logical speed)
-const MAP_SIZE = GRID_SIZE * CELL_SIZE;
-
-function isPointInPolygon(p, poly) {
-    let isInside = false;
-    let minX = poly[0].x, maxX = poly[0].x;
-    let minY = poly[0].y, maxY = poly[0].y;
-    for (let n = 1; n < poly.length; n++) {
-        let q = poly[n];
-        minX = Math.min(q.x, minX);
-        maxX = Math.max(q.x, maxX);
-        minY = Math.min(q.y, minY);
-        maxY = Math.max(q.y, maxY);
-    }
-    if (p.x < minX || p.x > maxX || p.y < minY || p.y > maxY) {
-        return false;
-    }
-    let i = 0, j = poly.length - 1;
-    for (i, j; i < poly.length; j = i++) {
-        if ( (poly[i].y > p.y) !== (poly[j].y > p.y) &&
-             (p.x < (poly[j].x - poly[i].x) * (p.y - poly[i].y) / (poly[j].y - poly[i].y) + poly[i].x) ) {
-            isInside = !isInside;
-        }
-    }
-    return isInside;
-}
+import { Bot } from './bot.js';
+import { BOT_NAMES, CELL_SIZE, GRID_SIZE, MAP_SIZE, NEON_COLORS, TICK_INTERVAL } from './src/config/game-config.js';
+import { countPlayableCells, isCellPlayable } from './src/domain/geometry.js';
+import { Player } from './src/domain/player.js';
+import { ProgressStore } from './src/infrastructure/progress-store.js';
+import { escapeHtml } from './src/presentation/escape-html.js';
+import { createLeaderboardItem } from './src/presentation/leaderboard.js';
 
 const LEVELS = {
     classic: {
@@ -110,58 +67,6 @@ const LEVELS = {
         unlockAt: 70
     }
 };
-
-class Player {
-    constructor(id, name, color, startGridX, startGridY, gridSize) {
-        this.id = id;
-        this.name = name;
-        this.color = color;
-        this.gridSize = gridSize;
-
-        // Logical position
-        this.gridX = startGridX;
-        this.gridY = startGridY;
-
-        // Visual position (interpolated)
-        this.x = startGridX;
-        this.y = startGridY;
-
-        // Direction: 0 = Up, 1 = Right, 2 = Down, 3 = Left
-        this.direction = 1;
-        this.nextDirection = 1;
-
-        this.trail = [];
-        this.isDead = false;
-        this.kills = 0;
-        this.peakPercentage = 0.0;
-        this.score = 0;
-
-        // Power-Up states
-        this.speedBoostTime = 0;
-        this.hasShield = false;
-        this.cannonShots = 0;
-        this.tickCooldown = 1;
-        this.lastMoveTime = 0;
-    }
-
-    snapToGrid() {
-        this.x = this.gridX;
-        this.y = this.gridY;
-    }
-
-    interpolate(t) {
-        this.x += (this.gridX - this.x) * t;
-        this.y += (this.gridY - this.y) * t;
-    }
-
-    setNextDirection(dir) {
-        // Prevent 180-degree turns (reversing)
-        const opposite = (this.direction + 2) % 4;
-        if (dir !== opposite) {
-            this.nextDirection = dir;
-        }
-    }
-}
 
 class Particle {
     constructor(x, y, color) {
@@ -254,6 +159,7 @@ class GameEngine {
         this.playableCellsCount = 0;
         this.boundarySegments = [];
         this.levelCellCounts = {};
+        this.progressStore = new ProgressStore(window.localStorage);
 
         // Pre-calculate and cache level cell counts
         Object.keys(LEVELS).forEach(levelId => {
@@ -265,23 +171,7 @@ class GameEngine {
     }
 
     countPlayableCells(levelId) {
-        const level = LEVELS[levelId];
-        if (level.type === 'square') {
-            return this.gridSize * this.gridSize;
-        }
-        let totalPlayable = 0;
-        for (let x = 0; x < this.gridSize; x++) {
-            for (let y = 0; y < this.gridSize; y++) {
-                let playable = false;
-                if (level.type === 'formula') {
-                    playable = level.formula(x / this.gridSize, y / this.gridSize);
-                } else if (level.type === 'polygon') {
-                    playable = isPointInPolygon({ x: x / this.gridSize, y: y / this.gridSize }, level.poly);
-                }
-                if (playable) totalPlayable++;
-            }
-        }
-        return totalPlayable;
+        return countPlayableCells(LEVELS[levelId], this.gridSize);
     }
 
     initGrid() {
@@ -293,17 +183,10 @@ class GameEngine {
         for (let x = 0; x < this.gridSize; x++) {
             this.grid[x] = [];
             for (let y = 0; y < this.gridSize; y++) {
-                let playable = true;
-                if (level.type === 'formula') {
-                    playable = level.formula(x / this.gridSize, y / this.gridSize);
-                } else if (level.type === 'polygon') {
-                    playable = isPointInPolygon({ x: x / this.gridSize, y: y / this.gridSize }, level.poly);
-                }
-                
                 this.grid[x][y] = {
                     ownerId: null,
                     trailOwnerId: null,
-                    playable: playable
+                    playable: isCellPlayable(level, x, y, this.gridSize)
                 };
             }
         }
@@ -340,19 +223,11 @@ class GameEngine {
     }
 
     getOverallWorldConquest() {
-        const levels = Object.values(LEVELS).filter(l => l.id !== 'classic');
-        let total = 0;
-        levels.forEach(l => {
-            total += this.getLevelProgress(l.id);
-        });
-        return total / levels.length;
+        return this.progressStore.getOverallWorldConquest(Object.values(LEVELS));
     }
 
     getLevelProgress(levelId) {
-        const key = `papirio_conquest_${levelId}`;
-        const saved = localStorage.getItem(key);
-        if (!saved) return 0;
-        return Math.min(100, parseFloat(saved) || 0);
+        return this.progressStore.getLevelProgress(levelId);
     }
 
     renderWorldLevels() {
@@ -441,7 +316,7 @@ class GameEngine {
         this.isPlaying = false;
         
         // Save 100% progress
-        localStorage.setItem(`papirio_conquest_${this.currentLevelId}`, "100.0000");
+        this.progressStore.setLevelProgress(this.currentLevelId, 100);
         this.renderWorldLevels();
         
         this.showNotification(`🎉 KONTINENT EROBERT! 100% 🎉`, '#00f3ff');
@@ -932,7 +807,7 @@ class GameEngine {
                         // Shield blocks death!
                         killedEntity.hasShield = false;
                         this.createShieldBreakParticles(killedEntity);
-                        this.showNotification(`<span style="color: ${killedEntity.color}">${killedEntity.name}s</span> Schild wurde zerstört! 🛡️`, '#00ffd5');
+                        this.showNotification(`<span style="color: ${killedEntity.color}">${escapeHtml(killedEntity.name)}s</span> Schild wurde zerstört! 🛡️`, '#00ffd5');
                     } else {
                         deadList.add(trailOwner);
                         killerMap[trailOwner] = entity.id; // entity is the killer
@@ -1030,18 +905,18 @@ class GameEngine {
                 
                 if (pu.type === 'speed') {
                     entity.speedBoostTime = 6000; // 6 seconds
-                    this.showNotification(`<span style="color: ${entity.color}">${entity.name}</span> hat TURBO gesammelt! ⚡`, '#ffff00');
+                    this.showNotification(`<span style="color: ${entity.color}">${escapeHtml(entity.name)}</span> hat TURBO gesammelt! ⚡`, '#ffff00');
                     for (let i = 0; i < 15; i++) this.particles.push(new Particle(entity.gridX, entity.gridY, '#ffff00'));
                 } else if (pu.type === 'shield') {
                     entity.hasShield = true;
-                    this.showNotification(`<span style="color: ${entity.color}">${entity.name}</span> hat SCHILD gesammelt! 🛡️`, '#00ffd5');
+                    this.showNotification(`<span style="color: ${entity.color}">${escapeHtml(entity.name)}</span> hat SCHILD gesammelt! 🛡️`, '#00ffd5');
                     for (let i = 0; i < 15; i++) this.particles.push(new Particle(entity.gridX, entity.gridY, '#00ffd5'));
                 } else if (pu.type === 'bomb') {
-                    this.showNotification(`<span style="color: ${entity.color}">${entity.name}</span> hat BOMBE gezündet! 💥`, '#ff007f');
+                    this.showNotification(`<span style="color: ${entity.color}">${escapeHtml(entity.name)}</span> hat BOMBE gezündet! 💥`, '#ff007f');
                     this.triggerBomb(entity, x, y);
                 } else if (pu.type === 'cannon') {
                     entity.cannonShots = (entity.cannonShots || 0) + 3;
-                    this.showNotification(`<span style="color: ${entity.color}">${entity.name}</span> hat FARBKANONE gesammelt! 🔫 (3 Schüsse)`, '#ff007f');
+                    this.showNotification(`<span style="color: ${entity.color}">${escapeHtml(entity.name)}</span> hat FARBKANONE gesammelt! 🔫 (3 Schüsse)`, '#ff007f');
                     for (let i = 0; i < 15; i++) this.particles.push(new Particle(entity.gridX, entity.gridY, '#ff007f'));
                     if (entity.id === 'player') {
                         this.updateHUD();
@@ -1103,7 +978,7 @@ class GameEngine {
                         if (victim.hasShield) {
                             victim.hasShield = false;
                             this.createShieldBreakParticles(victim);
-                            this.showNotification(`<span style="color: ${victim.color}">${victim.name}s</span> Schild wurde zerstört! 🛡️`, '#00ffd5');
+                            this.showNotification(`<span style="color: ${victim.color}">${escapeHtml(victim.name)}s</span> Schild wurde zerstört! 🛡️`, '#00ffd5');
                         } else {
                             deadList.add(trailOwnerId);
                             killerMap[trailOwnerId] = p.ownerId;
@@ -1275,10 +1150,9 @@ class GameEngine {
         // Save progress if the player was eliminated
         if (id === 'player' && this.currentMode === 'world') {
             const runPercent = this.player.peakPercentage || 0;
-            const key = `papirio_conquest_${this.currentLevelId}`;
-            const currentProgress = parseFloat(localStorage.getItem(key)) || 0;
+            const currentProgress = this.progressStore.getLevelProgress(this.currentLevelId);
             const newProgress = Math.min(100, currentProgress + runPercent);
-            localStorage.setItem(key, newProgress.toFixed(4));
+            this.progressStore.setLevelProgress(this.currentLevelId, newProgress);
             this.renderWorldLevels();
         }
 
@@ -1317,9 +1191,9 @@ class GameEngine {
         const victimName = entity.name;
         const killerName = killer ? killer.name : null;
         if (killerName) {
-            this.showNotification(`<span style="color: ${killer.color}">${killerName}</span> hat <span style="color: ${entity.color}">${victimName}</span> eliminiert!`, killer.color);
+            this.showNotification(`<span style="color: ${killer.color}">${escapeHtml(killerName)}</span> hat <span style="color: ${entity.color}">${escapeHtml(victimName)}</span> eliminiert!`, killer.color);
         } else {
-            this.showNotification(`<span style="color: ${entity.color}">${victimName}</span> ist ausgeschieden!`, entity.color);
+            this.showNotification(`<span style="color: ${entity.color}">${escapeHtml(victimName)}</span> ist ausgeschieden!`, entity.color);
         }
 
         // Clean up entity lists
@@ -1396,18 +1270,8 @@ class GameEngine {
 
         this.leaderboardList.innerHTML = '';
         activeList.slice(0, 5).forEach((entity, index) => {
-            const li = document.createElement('li');
-            if (entity.id === 'player') {
-                li.classList.add('me');
-            }
-            li.style.color = entity.color;
-            
             const pct = ((entity.score / totalPlayable) * 100).toFixed(1);
-            
-            li.innerHTML = `
-                <span class="leaderboard-name">${index + 1}. ${entity.name}</span>
-                <span>${pct}%</span>
-            `;
+            const li = createLeaderboardItem(document, entity, index + 1, pct);
             this.leaderboardList.appendChild(li);
         });
     }
