@@ -134,12 +134,16 @@ export class ThreeRenderer {
         this.floorTexture.generateMipmaps = false;
         this.floorTexture.minFilter = THREE.LinearFilter;
         this.floorTexture.magFilter = THREE.LinearFilter;
+        this.floorTexture.colorSpace = THREE.SRGBColorSpace;
 
         const floorGeo = new THREE.PlaneGeometry(MAP_SIZE, MAP_SIZE, 1, 1);
         const floorMat = new THREE.MeshStandardMaterial({
             map: this.floorTexture,
-            roughness: 0.4,
-            metalness: 0.2,
+            emissiveMap: this.floorTexture,
+            emissive: new THREE.Color(0xffffff),
+            emissiveIntensity: 0.5,
+            roughness: 0.5,
+            metalness: 0.1,
         });
 
         this.floorMesh = new THREE.Mesh(floorGeo, floorMat);
@@ -227,6 +231,7 @@ export class ThreeRenderer {
         const scale = w / MAP_SIZE;
         const cellPixelSize = CELL_SIZE * scale;
 
+        // Base arena background
         ctx.fillStyle = '#0d0f1a';
         ctx.fillRect(0, 0, w, h);
 
@@ -240,7 +245,7 @@ export class ThreeRenderer {
             }
         }
 
-        // Grid lines
+        // Subtle grid lines
         ctx.strokeStyle = '#1e243d';
         ctx.lineWidth = 0.8;
         ctx.beginPath();
@@ -254,22 +259,49 @@ export class ThreeRenderer {
         }
         ctx.stroke();
 
-        // Captured territories
+        // Captured territories with solid vivid color and glowing outline
         game.entities.forEach(owner => {
             if (owner.isDead) return;
             const rgb = NEON_COLORS[owner.color];
             if (!rgb) return;
 
-            ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.58)`;
+            // Fill
+            ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.78)`;
             ctx.beginPath();
             for (let x = 0; x < game.gridSize; x++) {
                 for (let y = 0; y < game.gridSize; y++) {
                     if (game.grid[x] && game.grid[x][y] && game.grid[x][y].ownerId === owner.id) {
-                        ctx.rect(x * cellPixelSize, y * cellPixelSize, cellPixelSize + 0.6, cellPixelSize + 0.6);
+                        ctx.rect(x * cellPixelSize, y * cellPixelSize, cellPixelSize + 0.5, cellPixelSize + 0.5);
                     }
                 }
             }
             ctx.fill();
+
+            // Bright glowing border contour around conquered land
+            ctx.strokeStyle = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
+            ctx.lineWidth = 1.4;
+            ctx.beginPath();
+            for (let x = 0; x < game.gridSize; x++) {
+                for (let y = 0; y < game.gridSize; y++) {
+                    if (game.grid[x] && game.grid[x][y] && game.grid[x][y].ownerId === owner.id) {
+                        const px = x * cellPixelSize;
+                        const py = y * cellPixelSize;
+                        if (y === 0 || game.grid[x][y-1]?.ownerId !== owner.id) {
+                            ctx.moveTo(px, py); ctx.lineTo(px + cellPixelSize, py);
+                        }
+                        if (y === game.gridSize - 1 || game.grid[x][y+1]?.ownerId !== owner.id) {
+                            ctx.moveTo(px, py + cellPixelSize); ctx.lineTo(px + cellPixelSize, py + cellPixelSize);
+                        }
+                        if (x === 0 || game.grid[x-1]?.[y]?.ownerId !== owner.id) {
+                            ctx.moveTo(px, py); ctx.lineTo(px, py + cellPixelSize);
+                        }
+                        if (x === game.gridSize - 1 || game.grid[x+1]?.[y]?.ownerId !== owner.id) {
+                            ctx.moveTo(px + cellPixelSize, py); ctx.lineTo(px + cellPixelSize, py + cellPixelSize);
+                        }
+                    }
+                }
+            }
+            ctx.stroke();
         });
 
         // Capture flashes

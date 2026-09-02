@@ -415,31 +415,58 @@ class GameEngine {
         // Key Controls
         window.addEventListener('keydown', (e) => {
             if (!this.isPlaying || !this.player) return;
-            switch(e.key) { // Use e.key directly
-                case 'ArrowUp':
-                case 'w':
-                case 'W':
-                    this.player.setNextDirection(0);
-                    break;
-                case 'ArrowRight':
-                case 'd':
-                case 'D':
-                    this.player.setNextDirection(1);
-                    break;
-                case 'ArrowDown':
-                case 's':
-                case 'S':
-                    this.player.setNextDirection(2);
-                    break;
-                case 'ArrowLeft':
-                case 'a':
-                case 'A':
-                    this.player.setNextDirection(3);
-                    break;
-                case ' ':
-                    this.fireProjectile(this.player);
-                    e.preventDefault();
-                    break;
+
+            if (this.viewMode === '3d') {
+                // In 3D (behind player follow camera): A/Left turns Left, D/Right turns Right
+                switch(e.key) {
+                    case 'ArrowLeft':
+                    case 'a':
+                    case 'A':
+                        this.player.setNextDirection((this.player.direction + 3) % 4);
+                        break;
+                    case 'ArrowRight':
+                    case 'd':
+                    case 'D':
+                        this.player.setNextDirection((this.player.direction + 1) % 4);
+                        break;
+                    case 'ArrowUp':
+                    case 'w':
+                    case 'W':
+                        this.player.setNextDirection(this.player.direction);
+                        break;
+                    case ' ':
+                        this.fireProjectile(this.player);
+                        e.preventDefault();
+                        break;
+                }
+            } else {
+                // In 2D: Absolute directions (Up, Right, Down, Left)
+                switch(e.key) {
+                    case 'ArrowUp':
+                    case 'w':
+                    case 'W':
+                        this.player.setNextDirection(0);
+                        break;
+                    case 'ArrowRight':
+                    case 'd':
+                    case 'D':
+                        this.player.setNextDirection(1);
+                        break;
+                    case 'ArrowDown':
+                    case 's':
+                    case 'S':
+                        this.player.setNextDirection(2);
+                        break;
+                    case 'ArrowLeft':
+                    case 'a':
+                    case 'A':
+                        this.player.setNextDirection(3);
+                        break;
+                    case ' ':
+                        this.fireProjectile(this.player);
+                        e.preventDefault();
+                        break;
+                }
             }
         });
 
@@ -478,12 +505,19 @@ class GameEngine {
             const dy = touchY - touchStartY;
 
             if (Math.abs(dx) > SWIPE_THRESHOLD || Math.abs(dy) > SWIPE_THRESHOLD) {
-                if (Math.abs(dx) > Math.abs(dy)) {
-                    if (dx > 0) this.player.setNextDirection(1); // Right
-                    else this.player.setNextDirection(3);        // Left
+                if (this.viewMode === '3d') {
+                    if (Math.abs(dx) > Math.abs(dy)) {
+                        if (dx > 0) this.player.setNextDirection((this.player.direction + 1) % 4); // Turn Right
+                        else this.player.setNextDirection((this.player.direction + 3) % 4);        // Turn Left
+                    }
                 } else {
-                    if (dy > 0) this.player.setNextDirection(2); // Down
-                    else this.player.setNextDirection(0);        // Up
+                    if (Math.abs(dx) > Math.abs(dy)) {
+                        if (dx > 0) this.player.setNextDirection(1); // Right
+                        else this.player.setNextDirection(3);        // Left
+                    } else {
+                        if (dy > 0) this.player.setNextDirection(2); // Down
+                        else this.player.setNextDirection(0);        // Up
+                    }
                 }
                 touchStartX = touchX;
                 touchStartY = touchY;
