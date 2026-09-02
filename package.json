@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "npx -y http-server -p 3000",
-    "check": "node --check game.js && node --check bot.js && node --check src/config/game-config.js && node --check src/domain/entity.js && node --check src/domain/geometry.js && node --check src/domain/grid-search.js && node --check src/domain/player.js && node --check src/infrastructure/progress-store.js && node --check src/presentation/escape-html.js && node --check src/presentation/leaderboard.js"
+    "check": "node --check game.js && node --check bot.js && node --check src/config/game-config.js && node --check src/domain/entity.js && node --check src/domain/geometry.js && node --check src/domain/grid-search.js && node --check src/domain/player.js && node --check src/infrastructure/progress-store.js && node --check src/presentation/escape-html.js && node --check src/presentation/leaderboard.js && node --check src/presentation/three-renderer.js"
   },
   "keywords": [
     "paper.io",

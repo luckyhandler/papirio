@@ -5,6 +5,7 @@ import { Player } from './src/domain/player.js';
 import { ProgressStore } from './src/infrastructure/progress-store.js';
 import { escapeHtml } from './src/presentation/escape-html.js';
 import { createLeaderboardItem } from './src/presentation/leaderboard.js';
+import { ThreeRenderer } from './src/presentation/three-renderer.js';
 
 const LEVELS = {
     classic: {
@@ -165,6 +166,11 @@ class GameEngine {
         Object.keys(LEVELS).forEach(levelId => {
             this.levelCellCounts[levelId] = this.countPlayableCells(levelId);
         });
+
+        // 3D & 2D Rendering View Mode
+        this.viewMode = '3d'; // Default to modern 3D view
+        this.threeRenderer = new ThreeRenderer();
+        this.threeRenderer.init(this.gameScreen);
 
         this.initGrid();
         this.setupEventListeners();
@@ -373,6 +379,23 @@ class GameEngine {
             this.renderWorldLevels();
         });
 
+        // View Mode Selector (3D / 2D)
+        const view3dBtn = document.getElementById('view-3d');
+        const view2dBtn = document.getElementById('view-2d');
+        if (view3dBtn && view2dBtn) {
+            view3dBtn.addEventListener('click', () => {
+                view3dBtn.classList.add('active');
+                view2dBtn.classList.remove('active');
+                this.viewMode = '3d';
+            });
+
+            view2dBtn.addEventListener('click', () => {
+                view2dBtn.classList.add('active');
+                view3dBtn.classList.remove('active');
+                this.viewMode = '2d';
+            });
+        }
+
         // Play Button
         const playBtn = document.getElementById('play-button');
         playBtn.addEventListener('click', () => {
@@ -434,19 +457,19 @@ class GameEngine {
             mobileFireBtn.addEventListener('touchstart', handleFire, { passive: false });
         }
 
-        // Mobile Swipe Controls
+        // Mobile Swipe Controls (attached to gameScreen so both 2D and 3D work)
         let touchStartX = 0;
         let touchStartY = 0;
         const SWIPE_THRESHOLD = 25; // pixels
 
-        this.canvas.addEventListener('touchstart', (e) => {
+        this.gameScreen.addEventListener('touchstart', (e) => {
             if (e.touches.length === 1) {
                 touchStartX = e.touches[0].clientX;
                 touchStartY = e.touches[0].clientY;
             }
         }, { passive: true });
 
-        this.canvas.addEventListener('touchmove', (e) => {
+        this.gameScreen.addEventListener('touchmove', (e) => {
             if (!this.isPlaying || !this.player || e.touches.length !== 1) return;
             
             const touchX = e.touches[0].clientX;
@@ -487,6 +510,9 @@ class GameEngine {
     resizeCanvas() {
         this.canvas.width = window.innerWidth;
         this.canvas.height = window.innerHeight;
+        if (this.threeRenderer) {
+            this.threeRenderer.resize(window.innerWidth, window.innerHeight);
+        }
     }
 
     startGame(playerName, playerColor) {
@@ -497,6 +523,17 @@ class GameEngine {
         this.powerUps = [];
         this.projectiles = [];
         this.captureFlashes = [];
+
+        // Setup 3D / 2D Canvas display
+        if (this.viewMode === '3d') {
+            this.canvas.style.display = 'none';
+            if (this.threeRenderer.canvas) this.threeRenderer.canvas.style.display = 'block';
+            this.threeRenderer.reset();
+            this.threeRenderer.setupBoundaryWalls(this);
+        } else {
+            this.canvas.style.display = 'block';
+            if (this.threeRenderer.canvas) this.threeRenderer.canvas.style.display = 'none';
+        }
 
         // Spawn Player
         const pSpawn = this.findSafeSpawnCell();
@@ -1397,7 +1434,11 @@ class GameEngine {
         this.particles = this.particles.filter(p => p.alpha > 0);
 
         // Render everything
-        this.render();
+        if (this.viewMode === '3d') {
+            this.threeRenderer.render(this);
+        } else {
+            this.render();
+        }
         this.renderMinimap();
 
         requestAnimationFrame((t) => this.gameLoop(t));
