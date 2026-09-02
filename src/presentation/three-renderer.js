@@ -1,4 +1,4 @@
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+import * as THREE from './three.module.js';
 import { CELL_SIZE, MAP_SIZE, NEON_COLORS } from '../config/game-config.js';
 
 export class ThreeRenderer {
@@ -13,6 +13,7 @@ export class ThreeRenderer {
         // Lighting
         this.dirLight = null;
         this.ambientLight = null;
+        this.playerLight = null;
 
         // Arena & Floor
         this.floorMesh = null;
@@ -22,14 +23,10 @@ export class ThreeRenderer {
         this.boundaryGroup = null;
 
         // Meshes pools/maps
-        this.entityMeshes = new Map(); // id -> { group, body, eyes, shield, label, crown }
+        this.entityMeshes = new Map(); // id -> { group, body, eyesGroup, shield, label, crownGroup }
         this.trailMeshes = new Map();  // id -> mesh
         this.powerUpMeshes = new Map(); // key `${x},${y}` -> mesh
         this.projectileMeshes = new Map(); // id -> mesh
-
-        // Particles
-        this.particlePool = [];
-        this.particleGroup = null;
 
         // Camera follow & shake state
         this.cameraTargetPos = new THREE.Vector3();
@@ -54,21 +51,20 @@ export class ThreeRenderer {
         this.canvas.style.left = '0';
         this.canvas.style.width = '100%';
         this.canvas.style.height = '100%';
-        this.canvas.style.zIndex = '1';
-        this.canvas.style.pointerEvents = 'none';
+        this.canvas.style.zIndex = '5';
         this.container.appendChild(this.canvas);
 
-        const width = this.container.clientWidth || window.innerWidth;
-        const height = this.container.clientHeight || window.innerHeight;
+        const width = window.innerWidth || 800;
+        const height = window.innerHeight || 600;
 
         // 1. Scene
         this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(0x0a0c16);
-        this.scene.fog = new THREE.FogExp2(0x0a0c16, 0.00065);
+        this.scene.background = new THREE.Color(0x080912);
+        this.scene.fog = new THREE.FogExp2(0x080912, 0.0006);
 
-        // 2. Camera (Perspective 3rd-person)
-        this.camera = new THREE.PerspectiveCamera(50, width / height, 10, 5000);
-        this.camera.position.set(MAP_SIZE / 2, 450, MAP_SIZE / 2 + 350);
+        // 2. Camera (Perspective 3rd-person elevated perspective)
+        this.camera = new THREE.PerspectiveCamera(52, width / height, 10, 6000);
+        this.camera.position.set(MAP_SIZE / 2, 320, MAP_SIZE / 2 + 260);
         this.camera.lookAt(MAP_SIZE / 2, 0, MAP_SIZE / 2);
 
         // 3. WebGL Renderer
@@ -78,46 +74,48 @@ export class ThreeRenderer {
             powerPreference: 'high-performance'
         });
         this.renderer.setSize(width, height);
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        this.renderer.toneMappingExposure = 1.15;
+        this.renderer.toneMappingExposure = 1.25;
 
         // 4. Lights
-        this.ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+        this.ambientLight = new THREE.AmbientLight(0xddeeff, 0.85);
         this.scene.add(this.ambientLight);
 
-        this.dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
-        this.dirLight.position.set(MAP_SIZE / 2 - 200, 600, MAP_SIZE / 2 - 300);
+        this.dirLight = new THREE.DirectionalLight(0xffffff, 1.4);
+        this.dirLight.position.set(MAP_SIZE / 2 - 200, 500, MAP_SIZE / 2 - 200);
         this.dirLight.castShadow = true;
         this.dirLight.shadow.mapSize.width = 2048;
         this.dirLight.shadow.mapSize.height = 2048;
         this.dirLight.shadow.camera.near = 50;
-        this.dirLight.shadow.camera.far = 1500;
-        const d = 500;
+        this.dirLight.shadow.camera.far = 1600;
+        const d = 450;
         this.dirLight.shadow.camera.left = -d;
         this.dirLight.shadow.camera.right = d;
         this.dirLight.shadow.camera.top = d;
         this.dirLight.shadow.camera.bottom = -d;
-        this.dirLight.shadow.bias = -0.0005;
+        this.dirLight.shadow.bias = -0.0004;
         this.scene.add(this.dirLight);
 
-        // Subtle colored rim lights for neon atmosphere
-        const blueLight = new THREE.PointLight(0x00f3ff, 2.5, 1200);
-        blueLight.position.set(MAP_SIZE * 0.2, 100, MAP_SIZE * 0.2);
+        // Player point light for neon glow
+        this.playerLight = new THREE.PointLight(0x00f3ff, 3.0, 450, 1.5);
+        this.playerLight.position.set(MAP_SIZE / 2, 40, MAP_SIZE / 2);
+        this.scene.add(this.playerLight);
+
+        // Colored ambient rim lights
+        const blueLight = new THREE.PointLight(0x00f3ff, 2.0, 1500);
+        blueLight.position.set(MAP_SIZE * 0.1, 120, MAP_SIZE * 0.1);
         this.scene.add(blueLight);
 
-        const magentaLight = new THREE.PointLight(0xb026ff, 2.5, 1200);
-        magentaLight.position.set(MAP_SIZE * 0.8, 100, MAP_SIZE * 0.8);
+        const magentaLight = new THREE.PointLight(0xb026ff, 2.0, 1500);
+        magentaLight.position.set(MAP_SIZE * 0.9, 120, MAP_SIZE * 0.9);
         this.scene.add(magentaLight);
 
-        // 5. Groups
+        // 5. Boundary Group
         this.boundaryGroup = new THREE.Group();
         this.scene.add(this.boundaryGroup);
-
-        this.particleGroup = new THREE.Group();
-        this.scene.add(this.particleGroup);
 
         // 6. Setup Floor
         this.initFloor();
@@ -126,7 +124,6 @@ export class ThreeRenderer {
     }
 
     initFloor() {
-        // High-res dynamic canvas texture for territories and grid
         const canvasRes = 1024;
         this.floorCanvas = document.createElement('canvas');
         this.floorCanvas.width = canvasRes;
@@ -141,8 +138,8 @@ export class ThreeRenderer {
         const floorGeo = new THREE.PlaneGeometry(MAP_SIZE, MAP_SIZE, 1, 1);
         const floorMat = new THREE.MeshStandardMaterial({
             map: this.floorTexture,
-            roughness: 0.45,
-            metalness: 0.15,
+            roughness: 0.4,
+            metalness: 0.2,
         });
 
         this.floorMesh = new THREE.Mesh(floorGeo, floorMat);
@@ -151,12 +148,12 @@ export class ThreeRenderer {
         this.floorMesh.receiveShadow = true;
         this.scene.add(this.floorMesh);
 
-        // Outer dark grid base plane (extended beyond map)
+        // Extended outer dark ground
         const outerGeo = new THREE.PlaneGeometry(MAP_SIZE * 3, MAP_SIZE * 3);
         const outerMat = new THREE.MeshStandardMaterial({
-            color: 0x05060b,
-            roughness: 0.9,
-            metalness: 0.1
+            color: 0x040508,
+            roughness: 0.95,
+            metalness: 0.05
         });
         const outerMesh = new THREE.Mesh(outerGeo, outerMat);
         outerMesh.rotation.x = -Math.PI / 2;
@@ -166,7 +163,6 @@ export class ThreeRenderer {
     }
 
     setupBoundaryWalls(game) {
-        // Clear previous boundary walls
         while (this.boundaryGroup.children.length > 0) {
             const child = this.boundaryGroup.children[0];
             if (child.geometry) child.geometry.dispose();
@@ -174,15 +170,15 @@ export class ThreeRenderer {
             this.boundaryGroup.remove(child);
         }
 
-        const wallHeight = 18;
+        const wallHeight = 22;
         const wallMat = new THREE.MeshStandardMaterial({
             color: 0xb026ff,
             emissive: 0xb026ff,
-            emissiveIntensity: 0.6,
-            roughness: 0.2,
-            metalness: 0.8,
+            emissiveIntensity: 0.7,
+            roughness: 0.15,
+            metalness: 0.85,
             transparent: true,
-            opacity: 0.85
+            opacity: 0.9
         });
 
         if (game.currentMode === 'world' && game.boundarySegments && game.boundarySegments.length > 0) {
@@ -197,7 +193,7 @@ export class ThreeRenderer {
                 const length = Math.sqrt(dx * dx + dz * dz);
                 const angle = Math.atan2(dz, dx);
 
-                const wallGeo = new THREE.BoxGeometry(length, wallHeight, 4);
+                const wallGeo = new THREE.BoxGeometry(length, wallHeight, 6);
                 const wallMesh = new THREE.Mesh(wallGeo, wallMat);
                 wallMesh.position.set((x1 + x2) / 2, wallHeight / 2, (z1 + z2) / 2);
                 wallMesh.rotation.y = -angle;
@@ -205,8 +201,7 @@ export class ThreeRenderer {
                 this.boundaryGroup.add(wallMesh);
             });
         } else {
-            // Classic Square Outer Border Walls
-            const thickness = 6;
+            const thickness = 8;
             const positions = [
                 { x: MAP_SIZE / 2, z: 0, w: MAP_SIZE, d: thickness },
                 { x: MAP_SIZE / 2, z: MAP_SIZE, w: MAP_SIZE, d: thickness },
@@ -232,23 +227,22 @@ export class ThreeRenderer {
         const scale = w / MAP_SIZE;
         const cellPixelSize = CELL_SIZE * scale;
 
-        // Clear background
-        ctx.fillStyle = '#0f111e';
+        ctx.fillStyle = '#0d0f1a';
         ctx.fillRect(0, 0, w, h);
 
-        // Draw playable arena
-        ctx.fillStyle = '#14172a';
+        // Playable cells background
+        ctx.fillStyle = '#14182b';
         for (let x = 0; x < game.gridSize; x++) {
             for (let y = 0; y < game.gridSize; y++) {
                 if (game.grid[x] && game.grid[x][y] && game.grid[x][y].playable) {
-                    ctx.fillRect(x * cellPixelSize, y * cellPixelSize, cellPixelSize + 0.5, cellPixelSize + 0.5);
+                    ctx.fillRect(x * cellPixelSize, y * cellPixelSize, cellPixelSize + 0.6, cellPixelSize + 0.6);
                 }
             }
         }
 
-        // Draw grid lines
-        ctx.strokeStyle = '#1d2138';
-        ctx.lineWidth = 0.6;
+        // Grid lines
+        ctx.strokeStyle = '#1e243d';
+        ctx.lineWidth = 0.8;
         ctx.beginPath();
         for (let x = 0; x <= game.gridSize; x += 2) {
             ctx.moveTo(x * cellPixelSize, 0);
@@ -260,34 +254,34 @@ export class ThreeRenderer {
         }
         ctx.stroke();
 
-        // Draw captured territories
+        // Captured territories
         game.entities.forEach(owner => {
             if (owner.isDead) return;
             const rgb = NEON_COLORS[owner.color];
             if (!rgb) return;
 
-            ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.55)`;
+            ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.58)`;
             ctx.beginPath();
             for (let x = 0; x < game.gridSize; x++) {
                 for (let y = 0; y < game.gridSize; y++) {
                     if (game.grid[x] && game.grid[x][y] && game.grid[x][y].ownerId === owner.id) {
-                        ctx.rect(x * cellPixelSize, y * cellPixelSize, cellPixelSize + 0.5, cellPixelSize + 0.5);
+                        ctx.rect(x * cellPixelSize, y * cellPixelSize, cellPixelSize + 0.6, cellPixelSize + 0.6);
                     }
                 }
             }
             ctx.fill();
         });
 
-        // Draw capture flashes
+        // Capture flashes
         if (game.captureFlashes && game.captureFlashes.length > 0) {
             game.captureFlashes.forEach(flash => {
                 const owner = game.entities.find(e => e.id === flash.ownerId);
                 if (!owner) return;
                 const rgb = NEON_COLORS[owner.color] || { r: 255, g: 255, b: 255 };
-                ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${flash.opacity * 0.9})`;
+                ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${flash.opacity * 0.95})`;
                 ctx.beginPath();
                 flash.cells.forEach(c => {
-                    ctx.rect(c.x * cellPixelSize, c.y * cellPixelSize, cellPixelSize + 0.5, cellPixelSize + 0.5);
+                    ctx.rect(c.x * cellPixelSize, c.y * cellPixelSize, cellPixelSize + 0.6, cellPixelSize + 0.6);
                 });
                 ctx.fill();
             });
@@ -296,14 +290,14 @@ export class ThreeRenderer {
         this.floorTexture.needsUpdate = true;
     }
 
-    getMaterial(colorHex, emissiveIntensity = 0.35) {
+    getMaterial(colorHex, emissiveIntensity = 0.45) {
         if (!this.materials.has(colorHex)) {
             const mat = new THREE.MeshStandardMaterial({
                 color: new THREE.Color(colorHex),
                 emissive: new THREE.Color(colorHex),
                 emissiveIntensity: emissiveIntensity,
-                roughness: 0.3,
-                metalness: 0.4
+                roughness: 0.25,
+                metalness: 0.55
             });
             this.materials.set(colorHex, mat);
         }
@@ -313,67 +307,69 @@ export class ThreeRenderer {
     createEntityMesh(entity) {
         const group = new THREE.Group();
 
-        // Body: Rounded box with smooth bevels
-        const bodyGeo = new THREE.BoxGeometry(CELL_SIZE * 0.85, CELL_SIZE * 0.85, CELL_SIZE * 0.85);
-        const bodyMat = this.getMaterial(entity.color, 0.45);
+        // 3D Avatar Body: Rounded Box
+        const size = CELL_SIZE * 0.9;
+        const bodyGeo = new THREE.BoxGeometry(size, size, size);
+        const bodyMat = this.getMaterial(entity.color, 0.5);
         const body = new THREE.Mesh(bodyGeo, bodyMat);
-        body.position.y = (CELL_SIZE * 0.85) / 2;
+        body.position.y = size / 2;
         body.castShadow = true;
         body.receiveShadow = true;
         group.add(body);
 
-        // Eyes Container (rotates with movement direction)
+        // Eyes container
         const eyesGroup = new THREE.Group();
-        eyesGroup.position.y = (CELL_SIZE * 0.85) / 2 + 1;
+        eyesGroup.position.y = size / 2 + 1;
 
-        const eyeGeo = new THREE.SphereGeometry(2.5, 12, 12);
+        const eyeGeo = new THREE.SphereGeometry(2.8, 14, 14);
         const eyeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.1 });
-        const pupilGeo = new THREE.SphereGeometry(1.3, 12, 12);
+        const pupilGeo = new THREE.SphereGeometry(1.5, 14, 14);
         const pupilMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
 
-        // Left Eye
         const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
-        leftEye.position.set(-4.5, 2, 7.5);
+        leftEye.position.set(-5, 2.5, size / 2 - 1);
         const leftPupil = new THREE.Mesh(pupilGeo, pupilMat);
-        leftPupil.position.set(-4.5, 2, 9.2);
+        leftPupil.position.set(-5, 2.5, size / 2 + 0.8);
         eyesGroup.add(leftEye);
         eyesGroup.add(leftPupil);
 
-        // Right Eye
         const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
-        rightEye.position.set(4.5, 2, 7.5);
+        rightEye.position.set(5, 2.5, size / 2 - 1);
         const rightPupil = new THREE.Mesh(pupilGeo, pupilMat);
-        rightPupil.position.set(4.5, 2, 9.2);
+        rightPupil.position.set(5, 2.5, size / 2 + 0.8);
         eyesGroup.add(rightEye);
         eyesGroup.add(rightPupil);
 
         group.add(eyesGroup);
 
-        // Shield Bubble
-        const shieldGeo = new THREE.SphereGeometry(CELL_SIZE * 0.82, 20, 20);
+        // Glowing Shield Bubble
+        const shieldGeo = new THREE.SphereGeometry(CELL_SIZE * 0.88, 22, 22);
         const shieldMat = new THREE.MeshStandardMaterial({
             color: 0x00ffd5,
             emissive: 0x00ffd5,
-            emissiveIntensity: 0.5,
+            emissiveIntensity: 0.6,
             transparent: true,
-            opacity: 0.4,
+            opacity: 0.45,
             roughness: 0.1,
-            metalness: 0.8,
-            wireframe: false
+            metalness: 0.9
         });
         const shield = new THREE.Mesh(shieldGeo, shieldMat);
-        shield.position.y = (CELL_SIZE * 0.85) / 2;
+        shield.position.y = size / 2;
         shield.visible = false;
         group.add(shield);
 
-        // Username Tag (Canvas Sprite)
+        // Name tag label
         const nameCanvas = document.createElement('canvas');
         nameCanvas.width = 256;
         nameCanvas.height = 64;
         const nameCtx = nameCanvas.getContext('2d');
-        nameCtx.fillStyle = 'rgba(10, 12, 22, 0.65)';
-        nameCtx.roundRect(16, 12, 224, 40, 12);
+        nameCtx.fillStyle = 'rgba(10, 12, 22, 0.7)';
+        nameCtx.roundRect(10, 10, 236, 44, 14);
         nameCtx.fill();
+        nameCtx.strokeStyle = entity.color;
+        nameCtx.lineWidth = 3;
+        nameCtx.roundRect(10, 10, 236, 44, 14);
+        nameCtx.stroke();
         nameCtx.fillStyle = '#ffffff';
         nameCtx.font = 'bold 24px Inter, sans-serif';
         nameCtx.textAlign = 'center';
@@ -384,23 +380,22 @@ export class ThreeRenderer {
         nameTexture.minFilter = THREE.LinearFilter;
         const spriteMat = new THREE.SpriteMaterial({ map: nameTexture, transparent: true });
         const label = new THREE.Sprite(spriteMat);
-        label.scale.set(38, 9.5, 1);
-        label.position.y = CELL_SIZE * 1.5;
+        label.scale.set(40, 10, 1);
+        label.position.y = CELL_SIZE * 1.6;
         group.add(label);
 
-        // Crown for #1 Player
+        // Crown for Leader
         const crownGroup = new THREE.Group();
-        const crownGeo = new THREE.ConeGeometry(5, 6, 5);
+        const crownGeo = new THREE.CylinderGeometry(5, 3.5, 4.5, 5);
         const crownMat = new THREE.MeshStandardMaterial({
             color: 0xffd700,
             emissive: 0xffaa00,
-            emissiveIntensity: 0.6,
+            emissiveIntensity: 0.7,
             roughness: 0.2,
             metalness: 0.9
         });
         const crownMesh = new THREE.Mesh(crownGeo, crownMat);
-        crownMesh.rotation.x = Math.PI;
-        crownMesh.position.y = CELL_SIZE * 1.25;
+        crownMesh.position.y = CELL_SIZE * 1.3;
         crownGroup.add(crownMesh);
         crownGroup.visible = false;
         group.add(crownGroup);
@@ -413,8 +408,7 @@ export class ThreeRenderer {
             eyesGroup,
             shield,
             label,
-            crownGroup,
-            currentAngle: 0
+            crownGroup
         };
     }
 
@@ -440,30 +434,28 @@ export class ThreeRenderer {
                 this.entityMeshes.set(entity.id, meshObj);
             }
 
-            // Position (X, Y in 2D -> X, Z in 3D)
             const posX = entity.x * CELL_SIZE + CELL_SIZE / 2;
             const posZ = entity.y * CELL_SIZE + CELL_SIZE / 2;
             meshObj.group.position.x = posX;
             meshObj.group.position.z = posZ;
 
-            // Subtle vertical bounce
-            meshObj.body.position.y = (CELL_SIZE * 0.85) / 2 + Math.sin(performance.now() * 0.008 + posX) * 1.5;
+            // Subtle bounce animation
+            meshObj.body.position.y = (CELL_SIZE * 0.9) / 2 + Math.sin(performance.now() * 0.009 + posX) * 1.8;
 
-            // Shield status & pulse
+            // Shield status
             meshObj.shield.visible = !!entity.hasShield;
             if (entity.hasShield) {
-                const pulse = 1 + Math.sin(performance.now() * 0.01) * 0.05;
+                const pulse = 1 + Math.sin(performance.now() * 0.01) * 0.06;
                 meshObj.shield.scale.set(pulse, pulse, pulse);
             }
 
             // Crown for leader
             meshObj.crownGroup.visible = (entity === topEntity && entity.score > 20);
             if (meshObj.crownGroup.visible) {
-                meshObj.crownGroup.rotation.y += 0.03;
+                meshObj.crownGroup.rotation.y += 0.035;
             }
 
-            // Direction & Eyes orientation
-            // 0: Up (-Z), 1: Right (+X), 2: Down (+Z), 3: Left (-X)
+            // Look direction: 0: Up (-Z), 1: Right (+X), 2: Down (+Z), 3: Left (-X)
             let targetAngle = 0;
             if (entity.direction === 0) targetAngle = Math.PI;
             else if (entity.direction === 1) targetAngle = Math.PI / 2;
@@ -473,7 +465,6 @@ export class ThreeRenderer {
             meshObj.eyesGroup.rotation.y = targetAngle;
         });
 
-        // Cleanup dead entities
         for (const [id, meshObj] of this.entityMeshes.entries()) {
             if (!activeIds.has(id)) {
                 this.scene.remove(meshObj.group);
@@ -489,17 +480,15 @@ export class ThreeRenderer {
             if (entity.isDead || !entity.trail || entity.trail.length === 0) return;
             activeTrailIds.add(entity.id);
 
-            // Construct 3D ribbon path from trail points + current head position
             const points = entity.trail.map(t => new THREE.Vector3(
                 t.x * CELL_SIZE + CELL_SIZE / 2,
-                2.5,
+                3.0,
                 t.y * CELL_SIZE + CELL_SIZE / 2
             ));
 
-            // Add current head position as the tip of the trail
             points.push(new THREE.Vector3(
                 entity.x * CELL_SIZE + CELL_SIZE / 2,
-                2.5,
+                3.0,
                 entity.y * CELL_SIZE + CELL_SIZE / 2
             ));
 
@@ -511,8 +500,7 @@ export class ThreeRenderer {
                 if (trailMesh.geometry) trailMesh.geometry.dispose();
             }
 
-            // Create flat ribbon geometry along points
-            const ribbonWidth = CELL_SIZE * 0.72;
+            const ribbonWidth = CELL_SIZE * 0.76;
             const vertices = [];
             const indices = [];
 
@@ -525,7 +513,6 @@ export class ThreeRenderer {
                     dir.subVectors(curr, points[i - 1]).normalize();
                 }
 
-                // Normal perpendicular in XZ plane
                 const normal = new THREE.Vector3(-dir.z, 0, dir.x).normalize();
 
                 const left = new THREE.Vector3().copy(curr).addScaledVector(normal, ribbonWidth / 2);
@@ -553,7 +540,7 @@ export class ThreeRenderer {
             const mat = new THREE.MeshStandardMaterial({
                 color: new THREE.Color(entity.color),
                 emissive: new THREE.Color(entity.color),
-                emissiveIntensity: 0.65,
+                emissiveIntensity: 0.75,
                 roughness: 0.2,
                 metalness: 0.6,
                 side: THREE.DoubleSide
@@ -565,7 +552,6 @@ export class ThreeRenderer {
             this.trailMeshes.set(entity.id, trailMesh);
         });
 
-        // Cleanup trails
         for (const [id, mesh] of this.trailMeshes.entries()) {
             if (!activeTrailIds.has(id)) {
                 this.scene.remove(mesh);
@@ -586,23 +572,23 @@ export class ThreeRenderer {
             let mesh = this.powerUpMeshes.get(key);
             if (!mesh) {
                 let color = 0xffff00;
-                let geo = new THREE.OctahedronGeometry(CELL_SIZE * 0.45, 0);
+                let geo = new THREE.OctahedronGeometry(CELL_SIZE * 0.5, 0);
 
                 if (pu.type === 'shield') {
                     color = 0x00ffd5;
-                    geo = new THREE.IcosahedronGeometry(CELL_SIZE * 0.45, 0);
+                    geo = new THREE.IcosahedronGeometry(CELL_SIZE * 0.5, 0);
                 } else if (pu.type === 'bomb') {
                     color = 0xff007f;
-                    geo = new THREE.DodecahedronGeometry(CELL_SIZE * 0.45, 0);
+                    geo = new THREE.DodecahedronGeometry(CELL_SIZE * 0.5, 0);
                 } else if (pu.type === 'cannon') {
                     color = 0xffaa00;
-                    geo = new THREE.TorusGeometry(CELL_SIZE * 0.35, 3.5, 8, 16);
+                    geo = new THREE.TorusGeometry(CELL_SIZE * 0.38, 4.0, 8, 16);
                 }
 
                 const mat = new THREE.MeshStandardMaterial({
                     color: color,
                     emissive: color,
-                    emissiveIntensity: 0.75,
+                    emissiveIntensity: 0.85,
                     roughness: 0.2,
                     metalness: 0.8
                 });
@@ -615,14 +601,13 @@ export class ThreeRenderer {
 
             const posX = pu.x * CELL_SIZE + CELL_SIZE / 2;
             const posZ = pu.y * CELL_SIZE + CELL_SIZE / 2;
-            const hover = 12 + Math.sin(performance.now() * 0.005 + posX) * 4;
+            const hover = 14 + Math.sin(performance.now() * 0.006 + posX) * 5;
 
             mesh.position.set(posX, hover, posZ);
-            mesh.rotation.y += 0.035;
+            mesh.rotation.y += 0.04;
             mesh.rotation.x += 0.02;
         });
 
-        // Cleanup
         for (const [key, mesh] of this.powerUpMeshes.entries()) {
             if (!activeKeys.has(key)) {
                 this.scene.remove(mesh);
@@ -640,11 +625,11 @@ export class ThreeRenderer {
             activeIndices.add(idx);
             let mesh = this.projectileMeshes.get(idx);
             if (!mesh) {
-                const geo = new THREE.SphereGeometry(6, 12, 12);
+                const geo = new THREE.SphereGeometry(7, 14, 14);
                 const mat = new THREE.MeshStandardMaterial({
                     color: new THREE.Color(p.color),
                     emissive: new THREE.Color(p.color),
-                    emissiveIntensity: 1.0,
+                    emissiveIntensity: 1.2,
                     roughness: 0.1
                 });
                 mesh = new THREE.Mesh(geo, mat);
@@ -654,7 +639,7 @@ export class ThreeRenderer {
 
             mesh.position.set(
                 p.x * CELL_SIZE + CELL_SIZE / 2,
-                10,
+                11,
                 p.y * CELL_SIZE + CELL_SIZE / 2
             );
         });
@@ -675,26 +660,23 @@ export class ThreeRenderer {
         const targetX = game.player.x * CELL_SIZE + CELL_SIZE / 2;
         const targetZ = game.player.y * CELL_SIZE + CELL_SIZE / 2;
 
-        // Dynamic 3rd person follow offset
-        // Elevated angle looking down at ~55 degrees behind the player
-        const elevation = 380;
-        const distanceBehind = 280;
+        // Dynamic 3rd person follow angle (~48 degrees)
+        const elevation = 280;
+        const distanceBehind = 240;
 
-        // Direction offset lookahead
         let lookAheadX = 0;
         let lookAheadZ = 0;
-        if (game.player.direction === 0) lookAheadZ = -60;
-        else if (game.player.direction === 1) lookAheadX = 60;
-        else if (game.player.direction === 2) lookAheadZ = 60;
-        else if (game.player.direction === 3) lookAheadX = -60;
+        if (game.player.direction === 0) lookAheadZ = -70;
+        else if (game.player.direction === 1) lookAheadX = 70;
+        else if (game.player.direction === 2) lookAheadZ = 70;
+        else if (game.player.direction === 3) lookAheadX = -70;
 
         this.cameraTargetPos.set(targetX, elevation, targetZ + distanceBehind);
         this.cameraLookTarget.set(targetX + lookAheadX, 0, targetZ + lookAheadZ);
 
-        // Apply Screen Shake
         this.cameraShakeOffset.set(0, 0, 0);
         if (game.screenShake > 0) {
-            const shakeMag = (game.screenShake / 26) * 16;
+            const shakeMag = (game.screenShake / 26) * 18;
             this.cameraShakeOffset.set(
                 (Math.random() * 2 - 1) * shakeMag,
                 (Math.random() * 2 - 1) * shakeMag,
@@ -707,7 +689,6 @@ export class ThreeRenderer {
             this.cameraCurrentLook.copy(this.cameraLookTarget);
             this.cameraInitialized = true;
         } else {
-            // Smooth lerp follow
             this.cameraCurrentPos.lerp(this.cameraTargetPos, 0.12);
             this.cameraCurrentLook.lerp(this.cameraLookTarget, 0.15);
         }
@@ -715,9 +696,13 @@ export class ThreeRenderer {
         this.camera.position.copy(this.cameraCurrentPos).add(this.cameraShakeOffset);
         this.camera.lookAt(this.cameraCurrentLook);
 
-        // Update directional light to follow player for crisp local shadows
+        if (this.playerLight) {
+            this.playerLight.position.set(targetX, 35, targetZ);
+            this.playerLight.color.set(game.player.color);
+        }
+
         if (this.dirLight) {
-            this.dirLight.position.set(targetX - 150, 500, targetZ - 200);
+            this.dirLight.position.set(targetX - 160, 480, targetZ - 180);
             this.dirLight.target.position.set(targetX, 0, targetZ);
             this.dirLight.target.updateMatrixWorld();
         }
@@ -726,25 +711,13 @@ export class ThreeRenderer {
     render(game) {
         if (!this.isInitialized || !this.renderer) return;
 
-        // 1. Update Floor Map Texture
         this.updateFloorTexture(game);
-
-        // 2. Update Entities
         this.updateEntities(game);
-
-        // 3. Update Trails
         this.updateTrails(game);
-
-        // 4. Update Power-Ups
         this.updatePowerUps(game);
-
-        // 5. Update Projectiles
         this.updateProjectiles(game);
-
-        // 6. Update Follow Camera
         this.updateCamera(game);
 
-        // 7. Render WebGL frame
         this.renderer.render(this.scene, this.camera);
     }
 
@@ -753,30 +726,26 @@ export class ThreeRenderer {
         this.camera.aspect = width / height;
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(width, height);
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     }
 
     reset() {
         this.cameraInitialized = false;
-        // Clear entities
         for (const [id, meshObj] of this.entityMeshes.entries()) {
             this.scene.remove(meshObj.group);
         }
         this.entityMeshes.clear();
 
-        // Clear trails
         for (const [id, mesh] of this.trailMeshes.entries()) {
             this.scene.remove(mesh);
         }
         this.trailMeshes.clear();
 
-        // Clear powerups
         for (const [key, mesh] of this.powerUpMeshes.entries()) {
             this.scene.remove(mesh);
         }
         this.powerUpMeshes.clear();
 
-        // Clear projectiles
         for (const [idx, mesh] of this.projectileMeshes.entries()) {
             this.scene.remove(mesh);
         }

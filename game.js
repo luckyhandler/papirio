@@ -556,6 +556,7 @@ class GameEngine {
         this.lastTime = performance.now();
 
         this.showScreen(this.gameScreen);
+        this.resizeCanvas();
         requestAnimationFrame((t) => this.gameLoop(t));
     }
 
