@@ -660,19 +660,37 @@ export class ThreeRenderer {
         const targetX = game.player.x * CELL_SIZE + CELL_SIZE / 2;
         const targetZ = game.player.y * CELL_SIZE + CELL_SIZE / 2;
 
-        // Dynamic 3rd person follow angle (~48 degrees)
-        const elevation = 280;
-        const distanceBehind = 240;
+        // Camera always directly behind the player's movement direction
+        // 0: Up (-Z), 1: Right (+X), 2: Down (+Z), 3: Left (-X)
+        let targetYaw = 0;
+        if (game.player.direction === 0) targetYaw = 0;
+        else if (game.player.direction === 1) targetYaw = -Math.PI / 2;
+        else if (game.player.direction === 2) targetYaw = Math.PI;
+        else if (game.player.direction === 3) targetYaw = Math.PI / 2;
 
-        let lookAheadX = 0;
-        let lookAheadZ = 0;
-        if (game.player.direction === 0) lookAheadZ = -70;
-        else if (game.player.direction === 1) lookAheadX = 70;
-        else if (game.player.direction === 2) lookAheadZ = 70;
-        else if (game.player.direction === 3) lookAheadX = -70;
+        if (!this.cameraInitialized) {
+            this.cameraYaw = targetYaw;
+            this.cameraCurrentLook.set(targetX, 10, targetZ);
+        } else {
+            // Shortest angular interpolation
+            let diff = targetYaw - this.cameraYaw;
+            while (diff < -Math.PI) diff += Math.PI * 2;
+            while (diff > Math.PI) diff -= Math.PI * 2;
+            this.cameraYaw += diff * 0.14; // smooth turning pan
+        }
 
-        this.cameraTargetPos.set(targetX, elevation, targetZ + distanceBehind);
-        this.cameraLookTarget.set(targetX + lookAheadX, 0, targetZ + lookAheadZ);
+        const distanceBehind = 210;
+        const elevation = 160;
+        const lookAheadDistance = 120;
+
+        const offsetX = Math.sin(this.cameraYaw) * distanceBehind;
+        const offsetZ = Math.cos(this.cameraYaw) * distanceBehind;
+
+        const forwardX = -Math.sin(this.cameraYaw) * lookAheadDistance;
+        const forwardZ = -Math.cos(this.cameraYaw) * lookAheadDistance;
+
+        this.cameraTargetPos.set(targetX + offsetX, elevation, targetZ + offsetZ);
+        this.cameraLookTarget.set(targetX + forwardX, 10, targetZ + forwardZ);
 
         this.cameraShakeOffset.set(0, 0, 0);
         if (game.screenShake > 0) {
@@ -689,8 +707,8 @@ export class ThreeRenderer {
             this.cameraCurrentLook.copy(this.cameraLookTarget);
             this.cameraInitialized = true;
         } else {
-            this.cameraCurrentPos.lerp(this.cameraTargetPos, 0.12);
-            this.cameraCurrentLook.lerp(this.cameraLookTarget, 0.15);
+            this.cameraCurrentPos.lerp(this.cameraTargetPos, 0.18);
+            this.cameraCurrentLook.lerp(this.cameraLookTarget, 0.2);
         }
 
         this.camera.position.copy(this.cameraCurrentPos).add(this.cameraShakeOffset);
@@ -731,6 +749,7 @@ export class ThreeRenderer {
 
     reset() {
         this.cameraInitialized = false;
+        this.cameraYaw = 0;
         for (const [id, meshObj] of this.entityMeshes.entries()) {
             this.scene.remove(meshObj.group);
         }
