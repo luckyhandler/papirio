@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Papirio | Paper.io Clone</title>
+    <title>Papierfisch | Paper.io Clone</title>
+    <link rel="icon" type="image/svg+xml" href="assets/mascot.svg">
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -24,7 +25,10 @@
     <!-- Lobby Screen -->
     <div id="lobby-screen" class="screen active">
         <div class="card glass">
-            <h1 class="logo">papir<span class="accent">.io</span></h1>
+            <div class="brand-row">
+                <img src="assets/mascot.svg" alt="Papierfisch Maskottchen" class="mascot">
+                <h1 class="logo">Papier<span class="accent">fisch</span></h1>
+            </div>
             <p class="subtitle">Erobere die Arena. Beanspruche dein Territorium.</p>
 
             <div class="coin-balance" id="lobby-coin-balance">
@@ -100,7 +104,7 @@
                 <span class="hud-value" id="hud-score">0.00%</span>
             </div>
             <div class="hud-stat">
-                <span class="hud-label">Kills</span>
+                <span class="hud-label">Übernahmen</span>
                 <span class="hud-value" id="hud-kills">0</span>
             </div>
             <div class="hud-stat hidden" id="hud-cannon-container">
@@ -141,7 +145,7 @@
                     <span class="recap-val" id="recap-score">0.00%</span>
                 </div>
                 <div class="recap-row">
-                    <span class="recap-label">Eliminierungen</span>
+                    <span class="recap-label">Übernahmen</span>
                     <span class="recap-val" id="recap-kills">0</span>
                 </div>
                 <div class="recap-row">

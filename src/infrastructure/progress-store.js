@@ -1,5 +1,5 @@
 export class ProgressStore {
-    constructor(storage, keyPrefix = 'papirio_conquest_') {
+    constructor(storage, keyPrefix = 'papierfisch_conquest_') {
         this.storage = storage;
         this.keyPrefix = keyPrefix;
     }

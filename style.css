@@ -103,6 +103,21 @@ body, html {
     transform: translateY(0);
 }
 
+/* Mascot */
+.brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+}
+
+.mascot {
+    width: auto;
+    height: 62px;
+    display: block;
+    filter: drop-shadow(0 4px 14px rgba(0, 243, 255, 0.25));
+}
+
 /* Typography & Logo */
 .logo {
     font-family: var(--font-heading);

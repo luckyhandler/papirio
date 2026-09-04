@@ -1,6 +1,6 @@
-# Papirio Architecture
+# Papierfisch Architecture
 
-Papirio is a no-build browser Canvas game.
+Papierfisch is a no-build browser Canvas game.
 
 ## Dependency Flow
 

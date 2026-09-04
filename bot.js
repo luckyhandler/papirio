@@ -1,5 +1,5 @@
 /**
- * AI Bot class for Papirio
+ * AI Bot class for Papierfisch
  */
 import { findClosestOwnedCell } from './src/domain/grid-search.js';
 

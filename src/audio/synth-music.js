@@ -83,7 +83,7 @@ export class SynthMusic {
         this.secondsPerStep = 60 / MIN_BPM / 4;
 
         try {
-            this.muted = window.localStorage.getItem('papirio_music_muted') === 'true';
+            this.muted = window.localStorage.getItem('papierfisch_music_muted') === 'true';
         } catch (error) {
             this.muted = false;
         }
@@ -166,7 +166,7 @@ export class SynthMusic {
     setMuted(muted) {
         this.muted = muted;
         try {
-            window.localStorage.setItem('papirio_music_muted', String(muted));
+            window.localStorage.setItem('papierfisch_music_muted', String(muted));
         } catch (error) {
             // Storage may be unavailable in privacy mode.
         }
