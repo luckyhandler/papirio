@@ -408,21 +408,57 @@ export class SynthMusic {
         }
     }
 
-    // Descending minor stinger: fixed key regardless of which song was
-    // playing, so it reads as "session over" no matter the track.
+    // "Power-down" stinger: one dying synth voice that sags in pitch and
+    // brightness together, capped with a low sub thud — a machine shutting
+    // off, rather than a melodic phrase. Fixed sound regardless of which
+    // song was playing, so it always reads as "session over".
     playGameOver() {
         this.ensureAudioReady();
         if (!this.ctx) return;
         const time = this.ctx.currentTime;
+        const sweepDuration = 1.3;
 
-        const notes = [440.00, 349.23, 293.66, 220.00]; // A4 - F4 - D4 - A3
-        const noteDuration = 0.26;
-        notes.forEach((freq, i) => {
-            const t = time + i * noteDuration;
-            this._blip(freq, freq * 0.96, t, noteDuration * 1.3, 'sawtooth', 0.3);
-        });
+        const osc = this.ctx.createOscillator();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(420, time);
+        osc.frequency.exponentialRampToValueAtTime(50, time + sweepDuration);
+        osc.detune.setValueAtTime(0, time);
+        osc.detune.linearRampToValueAtTime(-35, time + sweepDuration); // droops flat, sells the "dying" feel
 
-        const chordTime = time + notes.length * noteDuration * 0.4;
-        this._playPadChord([110.00, 130.81, 164.81], chordTime, 2.0); // low A minor-ish
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.Q.value = 5;
+        filter.frequency.setValueAtTime(3200, time);
+        filter.frequency.exponentialRampToValueAtTime(120, time + sweepDuration);
+
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0, time);
+        gain.gain.linearRampToValueAtTime(0.4, time + 0.06);
+        gain.gain.setValueAtTime(0.4, time + sweepDuration * 0.6);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + sweepDuration + 0.3);
+
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.sfxGain);
+
+        osc.start(time);
+        osc.stop(time + sweepDuration + 0.35);
+
+        // Final low thud as the sweep bottoms out
+        const thudTime = time + sweepDuration * 0.85;
+        const thud = this.ctx.createOscillator();
+        thud.type = 'sine';
+        thud.frequency.setValueAtTime(85, thudTime);
+        thud.frequency.exponentialRampToValueAtTime(28, thudTime + 0.35);
+
+        const thudGain = this.ctx.createGain();
+        thudGain.gain.setValueAtTime(0.55, thudTime);
+        thudGain.gain.exponentialRampToValueAtTime(0.001, thudTime + 0.45);
+
+        thud.connect(thudGain);
+        thudGain.connect(this.sfxGain);
+
+        thud.start(thudTime);
+        thud.stop(thudTime + 0.5);
     }
 }
