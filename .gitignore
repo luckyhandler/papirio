@@ -7,7 +7,7 @@
 ._*
 
 # Custom folder icons
-Icon
+Icon
 
 # Volume root files
 .DocumentRevisions-V100
@@ -17,6 +17,11 @@ Icon
 .Trashes
 .VolumeIcon.icns
 .com.apple.timemachine.donotpresent
+
+### Firebase
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
 
 ### Node
 # Dependencies
