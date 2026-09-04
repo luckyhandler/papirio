@@ -33,6 +33,21 @@ export class ProgressStore {
         return normalized;
     }
 
+    // Write-then-read self-test. If this fails (private browsing, blocked
+    // storage, quota exceeded), every get/set above silently no-ops and
+    // coins/progress will look like they "reset" on every reload.
+    isStorageAvailable() {
+        const testKey = this.keyPrefix + '__storage_test__';
+        try {
+            this.storage.setItem(testKey, '1');
+            const ok = this.storage.getItem(testKey) === '1';
+            this.storage.removeItem(testKey);
+            return ok;
+        } catch (error) {
+            return false;
+        }
+    }
+
     getCoins() {
         try {
             const value = this.storage.getItem(this.keyPrefix + 'coins');

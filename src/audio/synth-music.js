@@ -1,24 +1,54 @@
 /**
  * Procedurally generated 80s synthwave background music using the Web Audio
  * API — no audio files, everything is synthesized. A four-bar minor-key
- * chord loop (Am - F - C - G) drives a driving 16th-note arpeggio, a
- * sawtooth bass, a slow synth pad, and a simple gated-reverb drum pattern.
- * Always the same track, on purpose — not randomized.
+ * chord loop drives a driving 16th-note arpeggio, a sawtooth bass, a slow
+ * synth pad, and a simple gated-reverb drum pattern.
+ *
+ * Every round rolls a fresh combination of: one of 4 chord-progression
+ * shapes, a transposition (13 keys), an arpeggio direction, and a
+ * continuous tempo (92-116 BPM) — thousands of combinations, so "random
+ * track per round" is genuine, not a fixed playlist.
  */
 
-const BPM = 100;
 const STEPS_PER_BAR = 16;
 const BARS_PER_LOOP = 4;
-const SECONDS_PER_STEP = 60 / BPM / 4; // 16th notes
 const SCHEDULE_AHEAD_TIME = 0.15;
 const SCHEDULER_INTERVAL_MS = 25;
+const MIN_BPM = 92;
+const MAX_BPM = 116;
+const MAX_TRANSPOSE_SEMITONES = 6; // +/- range around A minor
 
-// Am - F - C - G, each as [bassRoot, padChord[], arpPattern[]]
-const PROGRESSION = [
-    { bass: 110.00, pad: [220.00, 261.63, 329.63], arp: [220.00, 261.63, 329.63, 440.00] }, // Am
-    { bass: 87.31, pad: [174.61, 220.00, 261.63], arp: [174.61, 220.00, 261.63, 349.23] },  // F
-    { bass: 130.81, pad: [261.63, 329.63, 392.00], arp: [261.63, 329.63, 392.00, 523.25] }, // C
-    { bass: 98.00, pad: [196.00, 246.94, 293.66], arp: [196.00, 246.94, 293.66, 392.00] },  // G
+// Four distinct minor-key progression shapes, in A minor at base pitch.
+// Each chord: [bassRoot, padChord[], arpPattern[]] (root-third-fifth-octave).
+const PROGRESSION_SHAPES = [
+    // i - VI - III - VII: Am - F - C - G
+    [
+        { bass: 110.00, pad: [220.00, 261.63, 329.63], arp: [220.00, 261.63, 329.63, 440.00] },
+        { bass: 87.31, pad: [174.61, 220.00, 261.63], arp: [174.61, 220.00, 261.63, 349.23] },
+        { bass: 130.81, pad: [261.63, 329.63, 392.00], arp: [261.63, 329.63, 392.00, 523.25] },
+        { bass: 98.00, pad: [196.00, 246.94, 293.66], arp: [196.00, 246.94, 293.66, 392.00] },
+    ],
+    // i - iv - VII - III: Am - Dm - G - C
+    [
+        { bass: 110.00, pad: [220.00, 261.63, 329.63], arp: [220.00, 261.63, 329.63, 440.00] },
+        { bass: 73.42, pad: [146.83, 174.61, 220.00], arp: [146.83, 174.61, 220.00, 293.66] },
+        { bass: 98.00, pad: [196.00, 246.94, 293.66], arp: [196.00, 246.94, 293.66, 392.00] },
+        { bass: 130.81, pad: [261.63, 329.63, 392.00], arp: [261.63, 329.63, 392.00, 523.25] },
+    ],
+    // i - VII - VI - VII: Am - G - F - G
+    [
+        { bass: 110.00, pad: [220.00, 261.63, 329.63], arp: [220.00, 261.63, 329.63, 440.00] },
+        { bass: 98.00, pad: [196.00, 246.94, 293.66], arp: [196.00, 246.94, 293.66, 392.00] },
+        { bass: 87.31, pad: [174.61, 220.00, 261.63], arp: [174.61, 220.00, 261.63, 349.23] },
+        { bass: 98.00, pad: [196.00, 246.94, 293.66], arp: [196.00, 246.94, 293.66, 392.00] },
+    ],
+    // i - v - VI - iv: Am - Em - F - Dm
+    [
+        { bass: 110.00, pad: [220.00, 261.63, 329.63], arp: [220.00, 261.63, 329.63, 440.00] },
+        { bass: 82.41, pad: [164.81, 196.00, 246.94], arp: [164.81, 196.00, 246.94, 329.63] },
+        { bass: 87.31, pad: [174.61, 220.00, 261.63], arp: [174.61, 220.00, 261.63, 349.23] },
+        { bass: 73.42, pad: [146.83, 174.61, 220.00], arp: [146.83, 174.61, 220.00, 293.66] },
+    ],
 ];
 
 const DRUM_PATTERN = {
@@ -27,6 +57,15 @@ const DRUM_PATTERN = {
     hat: [0, 2, 4, 6, 8, 10, 12, 14],
     openHat: [14],
 };
+
+function buildProgression(shape, semitones, reverseArp) {
+    const ratio = 2 ** (semitones / 12);
+    return shape.map((chord) => ({
+        bass: chord.bass * ratio,
+        pad: chord.pad.map((f) => f * ratio),
+        arp: (reverseArp ? [...chord.arp].reverse() : chord.arp).map((f) => f * ratio),
+    }));
+}
 
 export class SynthMusic {
     constructor() {
@@ -40,6 +79,8 @@ export class SynthMusic {
         this.nextNoteTime = 0;
         this.schedulerId = null;
         this.noiseBuffer = null;
+        this.progression = PROGRESSION_SHAPES[0];
+        this.secondsPerStep = 60 / MIN_BPM / 4;
 
         try {
             this.muted = window.localStorage.getItem('papirio_music_muted') === 'true';
@@ -89,11 +130,21 @@ export class SynthMusic {
         return buffer;
     }
 
-    // Starts the music loop. Call only while a round is actually running —
-    // the caller is responsible for respecting `muted` and game state.
+    // Starts the music loop with a freshly randomized combination of
+    // progression shape, key, arpeggio direction, and tempo. Call only
+    // while a round is actually running — the caller is responsible for
+    // respecting `muted` and game state.
     start() {
         this.ensureAudioReady();
         if (!this.ctx || this.isPlaying) return;
+
+        const shape = PROGRESSION_SHAPES[Math.floor(Math.random() * PROGRESSION_SHAPES.length)];
+        const semitones = Math.floor(Math.random() * (MAX_TRANSPOSE_SEMITONES * 2 + 1)) - MAX_TRANSPOSE_SEMITONES;
+        const reverseArp = Math.random() < 0.5;
+        const bpm = MIN_BPM + Math.random() * (MAX_BPM - MIN_BPM);
+
+        this.progression = buildProgression(shape, semitones, reverseArp);
+        this.secondsPerStep = 60 / bpm / 4;
 
         this.isPlaying = true;
         this.currentBar = 0;
@@ -131,7 +182,7 @@ export class SynthMusic {
 
         while (this.nextNoteTime < this.ctx.currentTime + SCHEDULE_AHEAD_TIME) {
             this._scheduleStep(this.currentBar, this.currentStep, this.nextNoteTime);
-            this.nextNoteTime += SECONDS_PER_STEP;
+            this.nextNoteTime += this.secondsPerStep;
             this.currentStep++;
             if (this.currentStep >= STEPS_PER_BAR) {
                 this.currentStep = 0;
@@ -143,18 +194,19 @@ export class SynthMusic {
     }
 
     _scheduleStep(bar, step, time) {
-        const chord = PROGRESSION[bar];
+        const chord = this.progression[bar];
+        const stepDuration = this.secondsPerStep;
 
         if (step === 0) {
-            this._playPadChord(chord.pad, time, SECONDS_PER_STEP * STEPS_PER_BAR);
-            this._playBass(chord.bass, time, SECONDS_PER_STEP * 7);
+            this._playPadChord(chord.pad, time, stepDuration * STEPS_PER_BAR);
+            this._playBass(chord.bass, time, stepDuration * 7);
         }
         if (step === 8) {
-            this._playBass(chord.bass * 1.5, time, SECONDS_PER_STEP * 7); // fifth up, pumping feel
+            this._playBass(chord.bass * 1.5, time, stepDuration * 7); // fifth up, pumping feel
         }
 
         const arpNote = chord.arp[step % chord.arp.length];
-        this._playArpNote(arpNote, time, SECONDS_PER_STEP * 0.9);
+        this._playArpNote(arpNote, time, stepDuration * 0.9);
 
         if (DRUM_PATTERN.kick.includes(step)) this._playKick(time);
         if (DRUM_PATTERN.snare.includes(step)) this._playSnare(time);
@@ -202,7 +254,7 @@ export class SynthMusic {
 
         // Feedback delay for that classic gated 80s arp echo
         const delay = this.ctx.createDelay();
-        delay.delayTime.value = SECONDS_PER_STEP * 2;
+        delay.delayTime.value = this.secondsPerStep * 2;
         const feedback = this.ctx.createGain();
         feedback.gain.value = 0.28;
         const wet = this.ctx.createGain();

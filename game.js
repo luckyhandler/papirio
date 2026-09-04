@@ -185,6 +185,10 @@ class GameEngine {
         this.setupEventListeners();
         this.renderCharacterPicker();
         this.updateCoinBalanceDisplay();
+
+        if (!this.progressStore.isStorageAvailable()) {
+            this.showNotification('⚠️ Speicher blockiert: Münzen & Freischaltungen werden NICHT gespeichert (privater Modus?)', '#ff3333');
+        }
     }
 
     countPlayableCells(levelId) {
