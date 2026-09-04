@@ -1,19 +1,21 @@
 /**
  * Procedurally generated 80s synthwave background music using the Web Audio
  * API — no audio files, everything is synthesized. A four-bar minor-key
- * chord loop (Am - F - C - G) drives a driving 16th-note arpeggio, a
+ * chord loop (i - VI - III - VII) drives a driving 16th-note arpeggio, a
  * sawtooth bass, a slow synth pad, and a simple gated-reverb drum pattern.
+ *
+ * A handful of "songs" share this same structure but differ in key
+ * (transposition), tempo, and arpeggio direction, so a random one picked
+ * at the start of each round genuinely feels like a different track.
  */
 
-const BPM = 100;
 const STEPS_PER_BAR = 16;
 const BARS_PER_LOOP = 4;
-const SECONDS_PER_STEP = 60 / BPM / 4; // 16th notes
 const SCHEDULE_AHEAD_TIME = 0.15;
 const SCHEDULER_INTERVAL_MS = 25;
 
-// Am - F - C - G, each as [bassRoot, padChord[], arpPattern[]]
-const PROGRESSION = [
+// Base progression in A minor (i - VI - III - VII): [bassRoot, padChord[], arpPattern[]]
+const BASE_PROGRESSION = [
     { bass: 110.00, pad: [220.00, 261.63, 329.63], arp: [220.00, 261.63, 329.63, 440.00] }, // Am
     { bass: 87.31, pad: [174.61, 220.00, 261.63], arp: [174.61, 220.00, 261.63, 349.23] },  // F
     { bass: 130.81, pad: [261.63, 329.63, 392.00], arp: [261.63, 329.63, 392.00, 523.25] }, // C
@@ -27,6 +29,25 @@ const DRUM_PATTERN = {
     openHat: [14],
 };
 
+// Each entry transposes BASE_PROGRESSION by `semitones`, runs at its own
+// tempo, and optionally reverses the arpeggio direction.
+const SONGS = [
+    { name: 'Neon Drive', semitones: 0, bpm: 100, arpReverse: false },
+    { name: 'Night Racer', semitones: 3, bpm: 108, arpReverse: false },   // Cm
+    { name: 'Midnight Grid', semitones: -2, bpm: 92, arpReverse: true }, // Gm
+    { name: 'Chrome Skyline', semitones: 7, bpm: 104, arpReverse: false }, // Em
+    { name: 'Retrograde', semitones: -5, bpm: 96, arpReverse: true },   // Em (down)
+];
+
+function buildProgression(song) {
+    const ratio = 2 ** (song.semitones / 12);
+    return BASE_PROGRESSION.map((chord) => ({
+        bass: chord.bass * ratio,
+        pad: chord.pad.map((f) => f * ratio),
+        arp: (song.arpReverse ? [...chord.arp].reverse() : chord.arp).map((f) => f * ratio),
+    }));
+}
+
 export class SynthMusic {
     constructor() {
         this.ctx = null;
@@ -39,6 +60,9 @@ export class SynthMusic {
         this.nextNoteTime = 0;
         this.schedulerId = null;
         this.noiseBuffer = null;
+        this.song = SONGS[0];
+        this.progression = BASE_PROGRESSION;
+        this.secondsPerStep = 60 / this.song.bpm / 4;
 
         try {
             this.muted = window.localStorage.getItem('papirio_music_muted') === 'true';
@@ -88,11 +112,16 @@ export class SynthMusic {
         return buffer;
     }
 
-    // Starts the music loop. Call only while a round is actually running —
-    // the caller is responsible for respecting `muted` and game state.
+    // Starts the music loop with a randomly picked song. Call only while a
+    // round is actually running — the caller is responsible for respecting
+    // `muted` and game state.
     start() {
         this.ensureAudioReady();
         if (!this.ctx || this.isPlaying) return;
+
+        this.song = SONGS[Math.floor(Math.random() * SONGS.length)];
+        this.progression = buildProgression(this.song);
+        this.secondsPerStep = 60 / this.song.bpm / 4;
 
         this.isPlaying = true;
         this.currentBar = 0;
@@ -130,7 +159,7 @@ export class SynthMusic {
 
         while (this.nextNoteTime < this.ctx.currentTime + SCHEDULE_AHEAD_TIME) {
             this._scheduleStep(this.currentBar, this.currentStep, this.nextNoteTime);
-            this.nextNoteTime += SECONDS_PER_STEP;
+            this.nextNoteTime += this.secondsPerStep;
             this.currentStep++;
             if (this.currentStep >= STEPS_PER_BAR) {
                 this.currentStep = 0;
@@ -142,18 +171,19 @@ export class SynthMusic {
     }
 
     _scheduleStep(bar, step, time) {
-        const chord = PROGRESSION[bar];
+        const chord = this.progression[bar];
+        const stepDuration = this.secondsPerStep;
 
         if (step === 0) {
-            this._playPadChord(chord.pad, time, SECONDS_PER_STEP * STEPS_PER_BAR);
-            this._playBass(chord.bass, time, SECONDS_PER_STEP * 7);
+            this._playPadChord(chord.pad, time, stepDuration * STEPS_PER_BAR);
+            this._playBass(chord.bass, time, stepDuration * 7);
         }
         if (step === 8) {
-            this._playBass(chord.bass * 1.5, time, SECONDS_PER_STEP * 7); // fifth up, pumping feel
+            this._playBass(chord.bass * 1.5, time, stepDuration * 7); // fifth up, pumping feel
         }
 
         const arpNote = chord.arp[step % chord.arp.length];
-        this._playArpNote(arpNote, time, SECONDS_PER_STEP * 0.9);
+        this._playArpNote(arpNote, time, stepDuration * 0.9);
 
         if (DRUM_PATTERN.kick.includes(step)) this._playKick(time);
         if (DRUM_PATTERN.snare.includes(step)) this._playSnare(time);
@@ -201,7 +231,7 @@ export class SynthMusic {
 
         // Feedback delay for that classic gated 80s arp echo
         const delay = this.ctx.createDelay();
-        delay.delayTime.value = SECONDS_PER_STEP * 2;
+        delay.delayTime.value = this.secondsPerStep * 2;
         const feedback = this.ctx.createGain();
         feedback.gain.value = 0.28;
         const wet = this.ctx.createGain();
@@ -405,5 +435,23 @@ export class SynthMusic {
             // Quick descending laser blip
             this._blip(1400, 500, time, 0.12, 'square', 0.2);
         }
+    }
+
+    // Descending minor stinger: fixed key regardless of which song was
+    // playing, so it reads as "session over" no matter the track.
+    playGameOver() {
+        this.ensureAudioReady();
+        if (!this.ctx) return;
+        const time = this.ctx.currentTime;
+
+        const notes = [440.00, 349.23, 293.66, 220.00]; // A4 - F4 - D4 - A3
+        const noteDuration = 0.26;
+        notes.forEach((freq, i) => {
+            const t = time + i * noteDuration;
+            this._blip(freq, freq * 0.96, t, noteDuration * 1.3, 'sawtooth', 0.3);
+        });
+
+        const chordTime = time + notes.length * noteDuration * 0.4;
+        this._playPadChord([110.00, 130.81, 164.81], chordTime, 2.0); // low A minor-ish
     }
 }

@@ -1523,6 +1523,7 @@ class GameEngine {
 
     showGameOver() {
         this.music.stop();
+        this.music.playGameOver();
         const totalPlayable = this.currentMode === 'world' ? this.playableCellsCount : (this.gridSize * this.gridSize);
         const finalScore = this.player.peakPercentage;
         this.recapScore.innerText = `${finalScore.toFixed(2)}%`;
