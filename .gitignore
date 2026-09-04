@@ -1,5 +1,6 @@
 ### macOS
 # Finder metadata
+.worktrees/
 .DS_Store
 
 # Thumbnails
