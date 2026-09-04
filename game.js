@@ -1,5 +1,5 @@
 import { Bot } from './bot.js';
-import { BOT_NAMES, CELL_SIZE, GRID_SIZE, MAP_SIZE, NEON_COLORS, SKINS, TICK_INTERVAL } from './src/config/game-config.js';
+import { BOT_NAMES, CELL_SIZE, CHARACTERS, GRID_SIZE, MAP_SIZE, NEON_COLORS, TICK_INTERVAL } from './src/config/game-config.js';
 import { countPlayableCells, isCellPlayable } from './src/domain/geometry.js';
 import { Player } from './src/domain/player.js';
 import { ProgressStore } from './src/infrastructure/progress-store.js';
@@ -134,7 +134,7 @@ class GameEngine {
         this.hudCoins = document.getElementById('hud-coins');
         this.coinBalanceValue = document.getElementById('coin-balance-value');
         this.coins = []; // In-arena collectible coin pickups
-        this.selectedSkin = SKINS.find(s => s.cost === 0)?.id || SKINS[0].id;
+        this.selectedCharacterId = CHARACTERS.find(c => c.cost === 0)?.id || CHARACTERS[0].id;
 
         // Grid Size & Data
         this.gridSize = GRID_SIZE;
@@ -181,7 +181,7 @@ class GameEngine {
 
         this.initGrid();
         this.setupEventListeners();
-        this.renderSkinPicker();
+        this.renderCharacterPicker();
         this.updateCoinBalanceDisplay();
     }
 
@@ -303,61 +303,66 @@ class GameEngine {
         }
     }
 
-    renderSkinPicker() {
-        const picker = document.getElementById('color-picker');
+    renderCharacterPicker() {
+        const picker = document.getElementById('character-picker');
         if (!picker) return;
 
-        const freeSkinIds = SKINS.filter(s => s.cost === 0).map(s => s.id);
-        const unlocked = this.progressStore.getUnlockedSkins(freeSkinIds);
+        const freeCharacterIds = CHARACTERS.filter(c => c.cost === 0).map(c => c.id);
+        const unlocked = this.progressStore.getUnlockedCharacters(freeCharacterIds);
         const coins = this.progressStore.getCoins();
 
-        if (!unlocked.has(this.selectedSkin)) {
-            this.selectedSkin = freeSkinIds[0] || SKINS[0].id;
+        if (!unlocked.has(this.selectedCharacterId)) {
+            this.selectedCharacterId = freeCharacterIds[0] || CHARACTERS[0].id;
         }
 
         picker.innerHTML = '';
 
-        SKINS.forEach(skin => {
-            const isUnlocked = unlocked.has(skin.id);
-            const button = document.createElement('button');
-            button.type = 'button';
-            button.className = `color-option ${this.selectedSkin === skin.id ? 'active' : ''}`;
-            button.style.setProperty('--btn-color', skin.id);
-            button.title = skin.name;
+        CHARACTERS.forEach(character => {
+            const isUnlocked = unlocked.has(character.id);
+            const card = document.createElement('button');
+            card.type = 'button';
+            card.className = `character-card ${this.selectedCharacterId === character.id ? 'active' : ''}`;
+            card.style.setProperty('--btn-color', character.id);
+            card.title = character.name;
 
             if (!isUnlocked) {
-                const canAfford = coins >= skin.cost;
-                button.classList.add('locked');
-                if (canAfford) button.classList.add('affordable');
-                button.innerHTML = `
-                    <span class="skin-cost">
+                const canAfford = coins >= character.cost;
+                card.innerHTML = `
+                    <div class="level-locked ${canAfford ? 'affordable' : ''}">
                         <span class="lock-icon">🔒</span>
-                        <span>${skin.cost}</span>
-                    </span>
+                        <span>${character.cost} 🪙</span>
+                    </div>
+                    <span class="character-icon">${character.icon}</span>
+                    <span class="character-name">${escapeHtml(character.name)}</span>
                 `;
 
-                button.addEventListener('click', () => {
+                card.addEventListener('click', () => {
                     const balance = this.progressStore.getCoins();
-                    if (balance < skin.cost) {
-                        this.showNotification(`Nicht genug Münzen! Dir fehlen ${skin.cost - balance} 🪙`, '#ffd700');
+                    if (balance < character.cost) {
+                        this.showNotification(`Nicht genug Münzen! Dir fehlen ${character.cost - balance} 🪙`, '#ffd700');
                         return;
                     }
-                    this.progressStore.spendCoins(skin.cost);
-                    this.progressStore.unlockSkin(skin.id, freeSkinIds);
-                    this.selectedSkin = skin.id;
-                    this.showNotification(`Skin <span style="color: ${skin.id}">${escapeHtml(skin.name)}</span> freigeschaltet! 🎉`, skin.id);
+                    this.progressStore.spendCoins(character.cost);
+                    this.progressStore.unlockCharacter(character.id, freeCharacterIds);
+                    this.selectedCharacterId = character.id;
+                    this.showNotification(`<span style="color: ${character.id}">${character.icon} ${escapeHtml(character.name)}</span> freigeschaltet! 🎉`, character.id);
                     this.updateCoinBalanceDisplay();
-                    this.renderSkinPicker();
+                    this.renderCharacterPicker();
                 });
             } else {
-                button.addEventListener('click', () => {
-                    picker.querySelectorAll('.color-option').forEach(opt => opt.classList.remove('active'));
-                    button.classList.add('active');
-                    this.selectedSkin = skin.id;
+                card.innerHTML = `
+                    <span class="character-icon">${character.icon}</span>
+                    <span class="character-name">${escapeHtml(character.name)}</span>
+                `;
+
+                card.addEventListener('click', () => {
+                    picker.querySelectorAll('.character-card').forEach(opt => opt.classList.remove('active'));
+                    card.classList.add('active');
+                    this.selectedCharacterId = character.id;
                 });
             }
 
-            picker.appendChild(button);
+            picker.appendChild(card);
         });
     }
 
@@ -484,14 +489,14 @@ class GameEngine {
             const nameInput = document.getElementById('username');
             let name = nameInput.value.trim();
             if (!name) name = 'Spieler';
-            this.startGame(name, this.selectedSkin);
+            this.startGame(name, this.selectedCharacterId);
         });
 
         // Try Again Button
         const restartBtn = document.getElementById('restart-button');
         restartBtn.addEventListener('click', () => {
             this.renderWorldLevels(); // Refresh levels progress and locks
-            this.renderSkinPicker(); // Refresh unlocked skins
+            this.renderCharacterPicker(); // Refresh unlocked characters
             this.showScreen(this.lobbyScreen);
         });
 
@@ -632,7 +637,9 @@ class GameEngine {
         }
     }
 
-    startGame(playerName, playerColor) {
+    startGame(playerName, characterId) {
+        const character = CHARACTERS.find(c => c.id === characterId) || CHARACTERS[0];
+        const playerColor = character.id;
         this.resizeCanvas();
         this.initGrid();
         this.entities = [];
@@ -657,6 +664,7 @@ class GameEngine {
         const pSpawn = this.findSafeSpawnCell();
 
         this.player = new Player('player', playerName, playerColor, pSpawn.x, pSpawn.y, this.gridSize);
+        this.player.icon = character.icon;
         this.entities.push(this.player);
         this.player.lastMoveTime = performance.now();
 
@@ -759,6 +767,7 @@ class GameEngine {
 
         const botId = `bot_${Math.random().toString(36).substr(2, 9)}`;
         const bot = new Bot(botId, name, color, spawn.x, spawn.y, this.gridSize);
+        bot.icon = CHARACTERS.find(c => c.id === color)?.icon || '🎮';
         this.entities.push(bot);
         bot.lastMoveTime = performance.now();
         this.claimInitialTerritory(bot);
@@ -1945,7 +1954,8 @@ class GameEngine {
             ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
             ctx.font = '500 10px Inter';
             ctx.textAlign = 'center';
-            ctx.fillText(entity.name, ex + CELL_SIZE/2, ey - 6);
+            const label = entity.icon ? `${entity.icon} ${entity.name}` : entity.name;
+            ctx.fillText(label, ex + CELL_SIZE/2, ey - 6);
             ctx.restore();
         });
 

@@ -9,7 +9,8 @@ export function createLeaderboardItem(documentRef, entity, rank, percentage) {
 
     const nameSpan = documentRef.createElement('span');
     nameSpan.className = 'leaderboard-name';
-    nameSpan.textContent = `${rank}. ${entity.name}`;
+    const label = entity.icon ? `${entity.icon} ${entity.name}` : entity.name;
+    nameSpan.textContent = `${rank}. ${label}`;
 
     const percentageSpan = documentRef.createElement('span');
     percentageSpan.textContent = `${percentage}%`;

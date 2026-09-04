@@ -407,7 +407,7 @@ export class ThreeRenderer {
         nameCtx.font = 'bold 24px Inter, sans-serif';
         nameCtx.textAlign = 'center';
         nameCtx.textBaseline = 'middle';
-        nameCtx.fillText(entity.name, 128, 32);
+        nameCtx.fillText(entity.icon ? `${entity.icon} ${entity.name}` : entity.name, 128, 32);
 
         const nameTexture = new THREE.CanvasTexture(nameCanvas);
         nameTexture.minFilter = THREE.LinearFilter;

@@ -68,27 +68,27 @@ export class ProgressStore {
         return true;
     }
 
-    getUnlockedSkins(freeSkinIds = []) {
+    getUnlockedCharacters(freeCharacterIds = []) {
         try {
-            const raw = this.storage.getItem(this.keyPrefix + 'unlocked_skins');
+            const raw = this.storage.getItem(this.keyPrefix + 'unlocked_characters');
             const parsed = raw ? JSON.parse(raw) : [];
             const set = new Set(Array.isArray(parsed) ? parsed : []);
-            freeSkinIds.forEach((id) => set.add(id));
+            freeCharacterIds.forEach((id) => set.add(id));
             return set;
         } catch (error) {
-            return new Set(freeSkinIds);
+            return new Set(freeCharacterIds);
         }
     }
 
-    isSkinUnlocked(skinId, freeSkinIds = []) {
-        return this.getUnlockedSkins(freeSkinIds).has(skinId);
+    isCharacterUnlocked(characterId, freeCharacterIds = []) {
+        return this.getUnlockedCharacters(freeCharacterIds).has(characterId);
     }
 
-    unlockSkin(skinId, freeSkinIds = []) {
-        const unlocked = this.getUnlockedSkins(freeSkinIds);
-        unlocked.add(skinId);
+    unlockCharacter(characterId, freeCharacterIds = []) {
+        const unlocked = this.getUnlockedCharacters(freeCharacterIds);
+        unlocked.add(characterId);
         try {
-            this.storage.setItem(this.keyPrefix + 'unlocked_skins', JSON.stringify(Array.from(unlocked)));
+            this.storage.setItem(this.keyPrefix + 'unlocked_characters', JSON.stringify(Array.from(unlocked)));
         } catch (error) {
             // Storage may be unavailable in privacy mode.
         }

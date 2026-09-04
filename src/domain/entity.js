@@ -22,6 +22,7 @@ export class Entity {
         this.isBlocked = false; // Standing still because a wall blocks the current direction
         this.lastMoveTime = 0;
         this.sessionCoins = 0; // Coins picked up this run (not yet banked to the wallet)
+        this.icon = null; // Character emoji shown next to the name tag
     }
 
     snapToGrid() {
