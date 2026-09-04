@@ -23,7 +23,7 @@ export class ThreeRenderer {
         this.boundaryGroup = null;
 
         // Meshes pools/maps
-        this.entityMeshes = new Map(); // id -> { group, body, eyesGroup, shield, label, crownGroup }
+        this.entityMeshes = new Map(); // id -> { group, body, base, shield, label, crownGroup }
         this.trailMeshes = new Map();  // id -> mesh
         this.powerUpMeshes = new Map(); // key `${x},${y}` -> mesh
         this.coinMeshes = new Map(); // key `${x},${y}` -> mesh
@@ -339,41 +339,45 @@ export class ThreeRenderer {
 
     createEntityMesh(entity) {
         const group = new THREE.Group();
-
-        // 3D Avatar Body: Rounded Box
         const size = CELL_SIZE * 0.9;
-        const bodyGeo = new THREE.BoxGeometry(size, size, size);
-        const bodyMat = this.getMaterial(entity.color, 0.5);
-        const body = new THREE.Mesh(bodyGeo, bodyMat);
-        body.position.y = size / 2;
-        body.castShadow = true;
-        body.receiveShadow = true;
+
+        // Colored ground disc: keeps the owner's color readable at a glance
+        // (it matches their territory/trail color) independent of which
+        // character figure is standing on it.
+        const baseGeo = new THREE.CylinderGeometry(size * 0.5, size * 0.56, 3, 20);
+        const baseMat = this.getMaterial(entity.color, 0.5);
+        const base = new THREE.Mesh(baseGeo, baseMat);
+        base.position.y = 1.5;
+        base.receiveShadow = true;
+        base.castShadow = true;
+        group.add(base);
+
+        // The character itself: a billboard sprite of the chosen figure's
+        // emoji, standing on the base. This IS the player on the field now,
+        // not a generic colored cube — different characters look different.
+        const figureCanvas = document.createElement('canvas');
+        figureCanvas.width = 128;
+        figureCanvas.height = 128;
+        const figureCtx = figureCanvas.getContext('2d');
+        if (entity.icon) {
+            figureCtx.font = '96px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+            figureCtx.textAlign = 'center';
+            figureCtx.textBaseline = 'middle';
+            figureCtx.fillText(entity.icon, 64, 70);
+        } else {
+            // Fallback if an entity somehow has no character assigned
+            figureCtx.fillStyle = entity.color;
+            figureCtx.beginPath();
+            figureCtx.arc(64, 64, 40, 0, Math.PI * 2);
+            figureCtx.fill();
+        }
+        const figureTexture = new THREE.CanvasTexture(figureCanvas);
+        figureTexture.minFilter = THREE.LinearFilter;
+        const figureMat = new THREE.SpriteMaterial({ map: figureTexture, transparent: true });
+        const body = new THREE.Sprite(figureMat);
+        body.scale.set(size * 1.15, size * 1.15, 1);
+        body.position.y = size / 2 + 4;
         group.add(body);
-
-        // Eyes container
-        const eyesGroup = new THREE.Group();
-        eyesGroup.position.y = size / 2 + 1;
-
-        const eyeGeo = new THREE.SphereGeometry(2.8, 14, 14);
-        const eyeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.1 });
-        const pupilGeo = new THREE.SphereGeometry(1.5, 14, 14);
-        const pupilMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
-
-        const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
-        leftEye.position.set(-5, 2.5, size / 2 - 1);
-        const leftPupil = new THREE.Mesh(pupilGeo, pupilMat);
-        leftPupil.position.set(-5, 2.5, size / 2 + 0.8);
-        eyesGroup.add(leftEye);
-        eyesGroup.add(leftPupil);
-
-        const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
-        rightEye.position.set(5, 2.5, size / 2 - 1);
-        const rightPupil = new THREE.Mesh(pupilGeo, pupilMat);
-        rightPupil.position.set(5, 2.5, size / 2 + 0.8);
-        eyesGroup.add(rightEye);
-        eyesGroup.add(rightPupil);
-
-        group.add(eyesGroup);
 
         // Glowing Shield Bubble
         const shieldGeo = new THREE.SphereGeometry(CELL_SIZE * 0.88, 22, 22);
@@ -407,14 +411,14 @@ export class ThreeRenderer {
         nameCtx.font = 'bold 24px Inter, sans-serif';
         nameCtx.textAlign = 'center';
         nameCtx.textBaseline = 'middle';
-        nameCtx.fillText(entity.icon ? `${entity.icon} ${entity.name}` : entity.name, 128, 32);
+        nameCtx.fillText(entity.name, 128, 32);
 
         const nameTexture = new THREE.CanvasTexture(nameCanvas);
         nameTexture.minFilter = THREE.LinearFilter;
         const spriteMat = new THREE.SpriteMaterial({ map: nameTexture, transparent: true });
         const label = new THREE.Sprite(spriteMat);
         label.scale.set(40, 10, 1);
-        label.position.y = CELL_SIZE * 1.6;
+        label.position.y = CELL_SIZE * 1.7;
         group.add(label);
 
         // Crown for Leader
@@ -438,7 +442,7 @@ export class ThreeRenderer {
         return {
             group,
             body,
-            eyesGroup,
+            base,
             shield,
             label,
             crownGroup
@@ -472,8 +476,11 @@ export class ThreeRenderer {
             meshObj.group.position.x = posX;
             meshObj.group.position.z = posZ;
 
-            // Subtle bounce animation
-            meshObj.body.position.y = (CELL_SIZE * 0.9) / 2 + Math.sin(performance.now() * 0.009 + posX) * 1.8;
+            // Very gentle idle sway for the character figure (kept subtle —
+            // a billboard sprite reads as "wobbly" much faster than the old
+            // solid cube did once it moves more than a hair)
+            const figureSize = CELL_SIZE * 0.9;
+            meshObj.body.position.y = figureSize / 2 + 4 + Math.sin(performance.now() * 0.0035 + posX) * 0.5;
 
             // Shield status
             meshObj.shield.visible = !!entity.hasShield;
@@ -487,15 +494,6 @@ export class ThreeRenderer {
             if (meshObj.crownGroup.visible) {
                 meshObj.crownGroup.rotation.y += 0.035;
             }
-
-            // Look direction: 0: Up (-Z), 1: Right (+X), 2: Down (+Z), 3: Left (-X)
-            let targetAngle = 0;
-            if (entity.direction === 0) targetAngle = Math.PI;
-            else if (entity.direction === 1) targetAngle = Math.PI / 2;
-            else if (entity.direction === 2) targetAngle = 0;
-            else if (entity.direction === 3) targetAngle = -Math.PI / 2;
-
-            meshObj.eyesGroup.rotation.y = targetAngle;
         });
 
         for (const [id, meshObj] of this.entityMeshes.entries()) {

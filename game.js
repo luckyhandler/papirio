@@ -1950,12 +1950,37 @@ class GameEngine {
             ctx.arc(eyeX2 + eyeSize/2, eyeY2 + eyeSize/2, eyeSize/4, 0, Math.PI*2);
             ctx.fill();
 
-            // Draw player username tag above head
+            // Draw character icon badge just above the head, so the chosen
+            // character is legible at a glance, not just a tiny inline glyph
+            if (entity.icon) {
+                const badgeX = ex + CELL_SIZE / 2;
+                const badgeY = ey - 8;
+                const badgeRadius = 8;
+
+                ctx.save();
+                ctx.fillStyle = 'rgba(10, 12, 22, 0.78)';
+                ctx.beginPath();
+                ctx.arc(badgeX, badgeY, badgeRadius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = entity.color;
+                ctx.lineWidth = 1.5;
+                ctx.shadowBlur = 8;
+                ctx.shadowColor = entity.color;
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+
+                ctx.font = '11px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(entity.icon, badgeX, badgeY + 0.5);
+                ctx.restore();
+            }
+
+            // Draw player username tag above the icon badge
             ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
             ctx.font = '500 10px Inter';
             ctx.textAlign = 'center';
-            const label = entity.icon ? `${entity.icon} ${entity.name}` : entity.name;
-            ctx.fillText(label, ex + CELL_SIZE/2, ey - 6);
+            ctx.fillText(entity.name, ex + CELL_SIZE/2, ey - 24);
             ctx.restore();
         });
 
