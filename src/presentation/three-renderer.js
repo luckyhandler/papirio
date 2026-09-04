@@ -26,6 +26,7 @@ export class ThreeRenderer {
         this.entityMeshes = new Map(); // id -> { group, body, eyesGroup, shield, label, crownGroup }
         this.trailMeshes = new Map();  // id -> mesh
         this.powerUpMeshes = new Map(); // key `${x},${y}` -> mesh
+        this.coinMeshes = new Map(); // key `${x},${y}` -> mesh
         this.projectileMeshes = new Map(); // id -> mesh
 
         // Camera follow & shake state
@@ -650,6 +651,51 @@ export class ThreeRenderer {
         }
     }
 
+    updateCoins(game) {
+        const activeKeys = new Set();
+
+        game.coins.forEach(coin => {
+            const key = `${coin.x},${coin.y}`;
+            activeKeys.add(key);
+
+            let mesh = this.coinMeshes.get(key);
+            if (!mesh) {
+                const isBig = coin.value > 1;
+                const radius = isBig ? CELL_SIZE * 0.42 : CELL_SIZE * 0.3;
+                const geo = new THREE.CylinderGeometry(radius, radius, 4, 20);
+                const mat = new THREE.MeshStandardMaterial({
+                    color: 0xffd700,
+                    emissive: 0xffb700,
+                    emissiveIntensity: isBig ? 0.9 : 0.6,
+                    roughness: 0.25,
+                    metalness: 0.9
+                });
+
+                mesh = new THREE.Mesh(geo, mat);
+                mesh.castShadow = true;
+                mesh.rotation.x = Math.PI / 2; // Face flat side up before spinning on Y
+                this.scene.add(mesh);
+                this.coinMeshes.set(key, mesh);
+            }
+
+            const posX = coin.x * CELL_SIZE + CELL_SIZE / 2;
+            const posZ = coin.y * CELL_SIZE + CELL_SIZE / 2;
+            const hover = 10 + Math.sin(performance.now() * 0.005 + posX) * 4;
+
+            mesh.position.set(posX, hover, posZ);
+            mesh.rotation.y += 0.08;
+        });
+
+        for (const [key, mesh] of this.coinMeshes.entries()) {
+            if (!activeKeys.has(key)) {
+                this.scene.remove(mesh);
+                if (mesh.geometry) mesh.geometry.dispose();
+                if (mesh.material) mesh.material.dispose();
+                this.coinMeshes.delete(key);
+            }
+        }
+    }
+
     updateProjectiles(game) {
         const activeIndices = new Set();
 
@@ -765,6 +811,7 @@ export class ThreeRenderer {
         this.updateEntities(game);
         this.updateTrails(game);
         this.updatePowerUps(game);
+        this.updateCoins(game);
         this.updateProjectiles(game);
         this.updateCamera(game);
 
@@ -796,6 +843,11 @@ export class ThreeRenderer {
             this.scene.remove(mesh);
         }
         this.powerUpMeshes.clear();
+
+        for (const [key, mesh] of this.coinMeshes.entries()) {
+            this.scene.remove(mesh);
+        }
+        this.coinMeshes.clear();
 
         for (const [idx, mesh] of this.projectileMeshes.entries()) {
             this.scene.remove(mesh);

@@ -1,5 +1,5 @@
 import { Bot } from './bot.js';
-import { BOT_NAMES, CELL_SIZE, GRID_SIZE, MAP_SIZE, NEON_COLORS, TICK_INTERVAL } from './src/config/game-config.js';
+import { BOT_NAMES, CELL_SIZE, GRID_SIZE, MAP_SIZE, NEON_COLORS, SKINS, TICK_INTERVAL } from './src/config/game-config.js';
 import { countPlayableCells, isCellPlayable } from './src/domain/geometry.js';
 import { Player } from './src/domain/player.js';
 import { ProgressStore } from './src/infrastructure/progress-store.js';
@@ -125,9 +125,16 @@ class GameEngine {
         // Setup stats elements
         this.recapScore = document.getElementById('recap-score');
         this.recapKills = document.getElementById('recap-kills');
+        this.recapCoins = document.getElementById('recap-coins');
         this.recapTime = document.getElementById('recap-time');
         this.recapRank = document.getElementById('recap-rank');
         this.eliminatedByText = document.getElementById('eliminated-by-text');
+
+        // Coin economy elements
+        this.hudCoins = document.getElementById('hud-coins');
+        this.coinBalanceValue = document.getElementById('coin-balance-value');
+        this.coins = []; // In-arena collectible coin pickups
+        this.selectedSkin = SKINS.find(s => s.cost === 0)?.id || SKINS[0].id;
 
         // Grid Size & Data
         this.gridSize = GRID_SIZE;
@@ -174,6 +181,8 @@ class GameEngine {
 
         this.initGrid();
         this.setupEventListeners();
+        this.renderSkinPicker();
+        this.updateCoinBalanceDisplay();
     }
 
     countPlayableCells(levelId) {
@@ -288,6 +297,70 @@ class GameEngine {
         });
     }
 
+    updateCoinBalanceDisplay() {
+        if (this.coinBalanceValue) {
+            this.coinBalanceValue.innerText = this.progressStore.getCoins();
+        }
+    }
+
+    renderSkinPicker() {
+        const picker = document.getElementById('color-picker');
+        if (!picker) return;
+
+        const freeSkinIds = SKINS.filter(s => s.cost === 0).map(s => s.id);
+        const unlocked = this.progressStore.getUnlockedSkins(freeSkinIds);
+        const coins = this.progressStore.getCoins();
+
+        if (!unlocked.has(this.selectedSkin)) {
+            this.selectedSkin = freeSkinIds[0] || SKINS[0].id;
+        }
+
+        picker.innerHTML = '';
+
+        SKINS.forEach(skin => {
+            const isUnlocked = unlocked.has(skin.id);
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = `color-option ${this.selectedSkin === skin.id ? 'active' : ''}`;
+            button.style.setProperty('--btn-color', skin.id);
+            button.title = skin.name;
+
+            if (!isUnlocked) {
+                const canAfford = coins >= skin.cost;
+                button.classList.add('locked');
+                if (canAfford) button.classList.add('affordable');
+                button.innerHTML = `
+                    <span class="skin-cost">
+                        <span class="lock-icon">🔒</span>
+                        <span>${skin.cost}</span>
+                    </span>
+                `;
+
+                button.addEventListener('click', () => {
+                    const balance = this.progressStore.getCoins();
+                    if (balance < skin.cost) {
+                        this.showNotification(`Nicht genug Münzen! Dir fehlen ${skin.cost - balance} 🪙`, '#ffd700');
+                        return;
+                    }
+                    this.progressStore.spendCoins(skin.cost);
+                    this.progressStore.unlockSkin(skin.id, freeSkinIds);
+                    this.selectedSkin = skin.id;
+                    this.showNotification(`Skin <span style="color: ${skin.id}">${escapeHtml(skin.name)}</span> freigeschaltet! 🎉`, skin.id);
+                    this.updateCoinBalanceDisplay();
+                    this.renderSkinPicker();
+                });
+            } else {
+                button.addEventListener('click', () => {
+                    picker.querySelectorAll('.color-option').forEach(opt => opt.classList.remove('active'));
+                    button.classList.add('active');
+                    this.selectedSkin = skin.id;
+                });
+            }
+
+            picker.appendChild(button);
+        });
+    }
+
     findSpawnInTerritory(entityId) {
         const owned = [];
         for (let x = 0; x < this.gridSize; x++) {
@@ -334,24 +407,33 @@ class GameEngine {
             this.recapTime.innerText = `${duration}s`;
             this.recapRank.innerText = '#1';
             this.eliminatedByText.innerText = 'Herzlichen Glückwunsch! Du hast den Kontinent vollständig erobert!';
+            this.awardRunCoins();
             this.showScreen(this.gameOverScreen);
         }, 1500);
     }
 
+    /**
+     * Bank coins collected this run into the persistent wallet: coin pickups
+     * plus a performance bonus for peak territory % and kills. Updates the
+     * recap row and lobby balance display.
+     */
+    awardRunCoins() {
+        if (!this.player) return 0;
+
+        const performanceBonus = Math.round(this.player.peakPercentage) + this.player.kills * 10;
+        const earned = this.player.sessionCoins + performanceBonus;
+
+        this.progressStore.addCoins(earned);
+        this.updateCoinBalanceDisplay();
+
+        if (this.recapCoins) {
+            this.recapCoins.innerText = `+${earned} 🪙`;
+        }
+
+        return earned;
+    }
+
     setupEventListeners() {
-        // Color Selection
-        const colorPicker = document.getElementById('color-picker');
-        const colorOptions = colorPicker.querySelectorAll('.color-option');
-        let selectedColor = '#00f3ff';
-
-        colorOptions.forEach(option => {
-            option.addEventListener('click', () => {
-                colorOptions.forEach(opt => opt.classList.remove('active'));
-                option.classList.add('active');
-                selectedColor = option.getAttribute('data-color');
-            });
-        });
-
         // Mode Selector
         const modeClassic = document.getElementById('mode-classic');
         const modeWorld = document.getElementById('mode-world');
@@ -402,13 +484,14 @@ class GameEngine {
             const nameInput = document.getElementById('username');
             let name = nameInput.value.trim();
             if (!name) name = 'Spieler';
-            this.startGame(name, selectedColor);
+            this.startGame(name, this.selectedSkin);
         });
 
         // Try Again Button
         const restartBtn = document.getElementById('restart-button');
         restartBtn.addEventListener('click', () => {
             this.renderWorldLevels(); // Refresh levels progress and locks
+            this.renderSkinPicker(); // Refresh unlocked skins
             this.showScreen(this.lobbyScreen);
         });
 
@@ -555,6 +638,7 @@ class GameEngine {
         this.entities = [];
         this.particles = [];
         this.powerUps = [];
+        this.coins = [];
         this.projectiles = [];
         this.captureFlashes = [];
 
@@ -1018,6 +1102,20 @@ class GameEngine {
                     }
                 }
             }
+
+            // Check if collecting a coin
+            const coinIndex = this.coins.findIndex(c => c.x === x && c.y === y);
+            if (coinIndex !== -1) {
+                const coin = this.coins[coinIndex];
+                this.coins.splice(coinIndex, 1); // Remove it
+                entity.sessionCoins += coin.value;
+                for (let i = 0; i < (coin.value > 1 ? 12 : 6); i++) {
+                    this.particles.push(new Particle(entity.gridX, entity.gridY, '#ffd700'));
+                }
+                if (entity.id === 'player') {
+                    this.updateHUD();
+                }
+            }
         });
 
         // 2.5 Update Projectiles
@@ -1122,6 +1220,11 @@ class GameEngine {
         // 5. Randomly spawn power-ups
         if (Math.random() < 0.035 && this.powerUps.length < 5) {
             this.spawnPowerUp();
+        }
+
+        // 6. Randomly spawn coin pickups (the in-run currency)
+        if (Math.random() < 0.09 && this.coins.length < 18) {
+            this.spawnCoin();
         }
 
         // Update Leaderboard & Scores
@@ -1336,6 +1439,9 @@ class GameEngine {
         const playerPct = (this.player.score / totalPlayable) * 100;
         this.hudScore.innerText = `${playerPct.toFixed(2)}%`;
         this.hudKills.innerText = this.player.kills;
+        if (this.hudCoins) {
+            this.hudCoins.innerText = `🪙 ${this.player.sessionCoins}`;
+        }
 
         // Cannon ammo display and mobile fire button toggle
         const cannonContainer = document.getElementById('hud-cannon-container');
@@ -1387,6 +1493,7 @@ class GameEngine {
         
         this.eliminatedByText.innerText = this.player.deathReason || 'Du bist abgestürzt!';
 
+        this.awardRunCoins();
         this.showScreen(this.gameOverScreen);
     }
 
@@ -1703,6 +1810,45 @@ class GameEngine {
             ctx.restore();
         });
 
+        // Draw Coins (spinning gold discs)
+        this.coins.forEach(coin => {
+            const px = coin.x * CELL_SIZE + camOffsetX;
+            const py = coin.y * CELL_SIZE + camOffsetY;
+            if (px < -30 || px > width + 30 || py < -30 || py > height + 30) return;
+
+            const isBig = coin.value > 1;
+            const baseRadius = (isBig ? 0.42 : 0.32) * CELL_SIZE;
+            const spinScaleX = Math.cos(performance.now() * 0.004 + coin.x + coin.y);
+            const bob = Math.sin(performance.now() * 0.005 + coin.x) * 2;
+
+            ctx.save();
+            ctx.translate(px + CELL_SIZE / 2, py + CELL_SIZE / 2 + bob);
+            ctx.scale(Math.max(0.15, Math.abs(spinScaleX)), 1);
+
+            ctx.shadowBlur = isBig ? 20 : 12;
+            ctx.shadowColor = '#ffd700';
+            ctx.fillStyle = isBig ? '#ffe45c' : '#ffd700';
+            ctx.beginPath();
+            ctx.arc(0, 0, baseRadius, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = '#b8860b';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            ctx.restore();
+
+            if (isBig) {
+                ctx.save();
+                ctx.fillStyle = '#fff8dc';
+                ctx.font = '800 11px Inter';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('5', px + CELL_SIZE / 2, py + CELL_SIZE / 2 + bob + 0.5);
+                ctx.restore();
+            }
+        });
+
         // 3. Draw Smooth Active Trails as Rounded Curves
         this.entities.forEach(entity => {
             if (!entity.isDead) {
@@ -1913,6 +2059,20 @@ class GameEngine {
         const type = types[Math.floor(Math.random() * types.length)];
 
         this.powerUps.push({ x, y, type });
+    }
+
+    spawnCoin() {
+        const x = 5 + Math.floor(Math.random() * (this.gridSize - 10));
+        const y = 5 + Math.floor(Math.random() * (this.gridSize - 10));
+
+        if (!this.isPlayableCell(x, y)) return; // Only spawn in playable cells
+        if (this.grid[x][y].ownerId !== null) return; // Only spawn in neutral cells
+        if (this.grid[x][y].trailOwnerId !== null) return;
+        if (this.coins.some(c => c.x === x && c.y === y)) return;
+        if (this.powerUps.some(pu => pu.x === x && pu.y === y)) return;
+
+        const value = Math.random() < 0.12 ? 5 : 1; // Rare bigger coin
+        this.coins.push({ x, y, value });
     }
 
     renderMinimap() {

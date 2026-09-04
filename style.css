@@ -130,6 +130,27 @@ body, html {
     font-weight: 400;
 }
 
+/* Coin Balance */
+.coin-balance {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: -1.25rem 0 1.5rem;
+    padding: 0.4rem 0.9rem;
+    border-radius: 999px;
+    background: rgba(255, 215, 0, 0.08);
+    border: 1px solid rgba(255, 215, 0, 0.3);
+    color: #ffd700;
+    font-family: var(--font-heading);
+    font-weight: 700;
+    font-size: 0.95rem;
+    box-shadow: 0 0 14px rgba(255, 215, 0, 0.12);
+}
+
+.coin-icon {
+    font-size: 1rem;
+}
+
 /* Form Styling */
 .form-group {
     text-align: left;
@@ -195,6 +216,51 @@ input[type="text"]:focus {
     transform: scale(1.15);
     opacity: 1;
     box-shadow: 0 0 15px var(--btn-color), 0 0 2px #fff;
+}
+
+.color-option.locked {
+    opacity: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.color-option.locked::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 8px;
+    background: rgba(10, 11, 16, 0.72);
+}
+
+.color-option .skin-cost {
+    position: relative;
+    z-index: 2;
+    font-size: 0.6rem;
+    font-weight: 700;
+    color: #ffd700;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    line-height: 1;
+}
+
+.color-option .skin-cost .lock-icon {
+    font-size: 0.75rem;
+}
+
+.color-option.locked:hover {
+    transform: scale(1.06);
+}
+
+.color-option.locked.affordable::before {
+    background: rgba(10, 11, 16, 0.55);
+}
+
+.color-option.locked.affordable .skin-cost {
+    color: #39ff14;
 }
 
 /* Buttons */
@@ -452,6 +518,15 @@ input[type="text"]:focus {
 .recap-val {
     font-weight: 600;
     color: #fff;
+}
+
+.recap-val-coins {
+    color: #ffd700;
+}
+
+#hud-coins {
+    color: #ffd700;
+    text-shadow: 0 0 8px rgba(255, 215, 0, 0.5);
 }
 
 /* Adjustments for Mobile Responsiveness */

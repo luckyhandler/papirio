@@ -21,6 +21,7 @@ export class Entity {
         this.tickCooldown = 1;
         this.isBlocked = false; // Standing still because a wall blocks the current direction
         this.lastMoveTime = 0;
+        this.sessionCoins = 0; // Coins picked up this run (not yet banked to the wallet)
     }
 
     snapToGrid() {

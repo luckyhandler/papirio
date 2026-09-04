@@ -23,25 +23,21 @@
         <div class="card glass">
             <h1 class="logo">papir<span class="accent">.io</span></h1>
             <p class="subtitle">Erobere die Arena. Beanspruche dein Territorium.</p>
-            
+
+            <div class="coin-balance" id="lobby-coin-balance">
+                <span class="coin-icon">🪙</span>
+                <span id="coin-balance-value">0</span>
+            </div>
+
             <div class="form-group">
                 <label for="username">Spielername</label>
                 <input type="text" id="username" placeholder="Spieler" maxlength="12" autocomplete="off">
             </div>
-            
+
             <div class="form-group">
-                <label>Wähle deine Farbe</label>
+                <label>Wähle deinen Skin</label>
                 <div class="color-picker" id="color-picker">
-                    <button class="color-option active" data-color="#00f3ff" style="--btn-color: #00f3ff;"></button>
-                    <button class="color-option" data-color="#ff007f" style="--btn-color: #ff007f;"></button>
-                    <button class="color-option" data-color="#39ff14" style="--btn-color: #39ff14;"></button>
-                    <button class="color-option" data-color="#ffaa00" style="--btn-color: #ffaa00;"></button>
-                    <button class="color-option" data-color="#b026ff" style="--btn-color: #b026ff;"></button>
-                    <button class="color-option" data-color="#ff3333" style="--btn-color: #ff3333;"></button>
-                    <button class="color-option" data-color="#ffff00" style="--btn-color: #ffff00;"></button>
-                    <button class="color-option" data-color="#ff00ff" style="--btn-color: #ff00ff;"></button>
-                    <button class="color-option" data-color="#a6ff00" style="--btn-color: #a6ff00;"></button>
-                    <button class="color-option" data-color="#00ffd5" style="--btn-color: #00ffd5;"></button>
+                    <!-- Wird dynamisch befüllt -->
                 </div>
             </div>
 
@@ -101,6 +97,10 @@
                 <span class="hud-label">Farbkanone</span>
                 <span class="hud-value" id="hud-cannon">0</span>
             </div>
+            <div class="hud-stat">
+                <span class="hud-label">Münzen</span>
+                <span class="hud-value" id="hud-coins">🪙 0</span>
+            </div>
         </div>
 
         <div class="hud top-right glass leaderboard-hud">
@@ -133,6 +133,10 @@
                 <div class="recap-row">
                     <span class="recap-label">Eliminierungen</span>
                     <span class="recap-val" id="recap-kills">0</span>
+                </div>
+                <div class="recap-row">
+                    <span class="recap-label">Münzen verdient</span>
+                    <span class="recap-val recap-val-coins" id="recap-coins">+0 🪙</span>
                 </div>
                 <div class="recap-row">
                     <span class="recap-label">Überlebenszeit</span>
