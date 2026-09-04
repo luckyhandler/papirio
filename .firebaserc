@@ -1,5 +1,7 @@
 {
   "projects": {
     "default": "papierfisch"
-  }
+  },
+  "targets": {},
+  "etags": {}
 }
