@@ -652,18 +652,20 @@ class GameEngine {
         // Mobile Swipe Controls (attached to gameScreen so both 2D and 3D work)
         let touchStartX = 0;
         let touchStartY = 0;
+        let swipeHandled = false; // one turn per finger-down/up gesture, not per threshold crossing
         const SWIPE_THRESHOLD = 25; // pixels
 
         this.gameScreen.addEventListener('touchstart', (e) => {
             if (e.touches.length === 1) {
                 touchStartX = e.touches[0].clientX;
                 touchStartY = e.touches[0].clientY;
+                swipeHandled = false;
             }
         }, { passive: true });
 
         this.gameScreen.addEventListener('touchmove', (e) => {
-            if (!this.isPlaying || !this.player || e.touches.length !== 1) return;
-            
+            if (!this.isPlaying || !this.player || e.touches.length !== 1 || swipeHandled) return;
+
             const touchX = e.touches[0].clientX;
             const touchY = e.touches[0].clientY;
             const dx = touchX - touchStartX;
@@ -684,8 +686,7 @@ class GameEngine {
                         else this.player.setNextDirection(0);        // Up
                     }
                 }
-                touchStartX = touchX;
-                touchStartY = touchY;
+                swipeHandled = true; // ignore the rest of this gesture until the finger lifts again
             }
         }, { passive: true });
 
