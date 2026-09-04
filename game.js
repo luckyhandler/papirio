@@ -1607,6 +1607,13 @@ class GameEngine {
         this.particles.forEach(p => p.update());
         this.particles = this.particles.filter(p => p.alpha > 0);
 
+        // Decay screen shake here so it settles in both view modes — the 2D
+        // canvas path used to be the only place decrementing it, so in 3D
+        // mode a shake (kill, bomb, shield break) never wore off.
+        if (this.screenShake > 0) {
+            this.screenShake--;
+        }
+
         // Render everything
         if (this.viewMode === '3d') {
             this.threeRenderer.render(this);
@@ -1688,12 +1695,11 @@ class GameEngine {
         let camOffsetX = width / 2 - this.camera.x * CELL_SIZE;
         let camOffsetY = height / 2 - this.camera.y * CELL_SIZE;
 
-        // Apply screen shake
+        // Apply screen shake (decay happens once per frame in gameLoop)
         if (this.screenShake > 0) {
             const shakeMagnitude = (this.screenShake / 26) * 14;
             camOffsetX += (Math.random() * 2 - 1) * shakeMagnitude;
             camOffsetY += (Math.random() * 2 - 1) * shakeMagnitude;
-            this.screenShake--;
         }
 
         // Viewport culling limits
