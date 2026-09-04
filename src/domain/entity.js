@@ -19,6 +19,7 @@ export class Entity {
         this.hasShield = false;
         this.cannonShots = 0;
         this.tickCooldown = 1;
+        this.isBlocked = false; // Standing still because a wall blocks the current direction
         this.lastMoveTime = 0;
     }
 

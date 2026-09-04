@@ -822,6 +822,7 @@ class GameEngine {
     tick(now) {
         if (this.player && this.player.isDead) return; // Freeze logic updates on death
         const deadList = new Set();
+        const blockedList = new Set(); // Entities stopped by a wall this tick
         const killerMap = {}; // Track who killed whom: victimId -> killerId
         const directions = [
             { dx: 0, dy: -1 }, // Up
@@ -861,12 +862,33 @@ class GameEngine {
             entity.prevGridX = entity.gridX;
             entity.prevGridY = entity.gridY;
 
-            // Boundary collision check
+            // Wall collision: don't die, stop in front of the wall and steer left or right
             if (!this.isPlayableCell(nextGridX, nextGridY)) {
-                deadList.add(entity.id);
-                entity.deathReason = 'hat die Arena verlassen';
+                const reverseDir = (entity.direction + 2) % 4;
+                const hasEscape = directions.some((option, dir) => (
+                    dir !== reverseDir &&
+                    this.isPlayableCell(entity.gridX + option.dx, entity.gridY + option.dy)
+                ));
+
+                if (!hasEscape) {
+                    // Completely walled in: nothing left to steer into
+                    deadList.add(entity.id);
+                    entity.deathReason = 'ist in einer Sackgasse gestrandet';
+                    return;
+                }
+
+                blockedList.add(entity.id);
+                if (!entity.isBlocked) {
+                    entity.isBlocked = true;
+                    this.createWallBumpParticles(entity, step);
+                    if (entity.id === 'player') {
+                        this.notifyWallBump();
+                    }
+                }
+                // Keep facing the wall; the next steering input resolves the block
                 return;
             }
+            entity.isBlocked = false;
 
             // Check if hitting another player's trail (immune to own trail)
             const targetCell = this.grid[nextGridX][nextGridY];
@@ -944,6 +966,7 @@ class GameEngine {
         // 2. Apply movement updates, trails, and territory captures
         this.entities.forEach(entity => {
             if (entity.isDead || deadList.has(entity.id)) return;
+            if (blockedList.has(entity.id)) return; // Stopped at a wall, no trail or pickup this tick
 
             // Check if they actually moved on this tick (cooldown just reset)
             const isBoosted = entity.speedBoostTime > 0;
@@ -1821,6 +1844,21 @@ class GameEngine {
         for (let i = 0; i < 20; i++) {
             this.particles.push(new Particle(entity.gridX, entity.gridY, '#00ffd5'));
         }
+    }
+
+    createWallBumpParticles(entity, step) {
+        const x = entity.gridX + step.dx * 0.5;
+        const y = entity.gridY + step.dy * 0.5;
+        for (let i = 0; i < 8; i++) {
+            this.particles.push(new Particle(x, y, '#ffffff'));
+        }
+    }
+
+    notifyWallBump() {
+        const now = performance.now();
+        if (this.lastWallHintTime && now - this.lastWallHintTime < 8000) return;
+        this.lastWallHintTime = now;
+        this.showNotification('Wand! Lenke nach links oder rechts. 🧱', '#ffffff');
     }
 
     triggerBomb(entity, cx, cy) {
