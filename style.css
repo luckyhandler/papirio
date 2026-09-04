@@ -462,6 +462,82 @@ input[type="text"]:focus {
     max-width: 110px;
 }
 
+/* Lobby Highscore List */
+.highscore-list {
+    list-style: none;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 0.5rem 0.75rem;
+    margin-top: 0.5rem;
+    max-height: 190px;
+    overflow-y: auto;
+}
+
+.highscore-list::-webkit-scrollbar {
+    width: 6px;
+}
+.highscore-list::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 3px;
+}
+.highscore-list::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+}
+
+.highscore-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.4rem 0;
+    font-size: 0.85rem;
+}
+
+.highscore-row:not(:last-child) {
+    border-bottom: 1px solid var(--border-color);
+}
+
+.highscore-rank {
+    font-family: var(--font-heading);
+    font-weight: 700;
+    color: var(--text-muted);
+    width: 1.4rem;
+    flex-shrink: 0;
+}
+
+.highscore-row:nth-child(1) .highscore-rank { color: #ffd700; }
+.highscore-row:nth-child(2) .highscore-rank { color: #c0c0c0; }
+.highscore-row:nth-child(3) .highscore-rank { color: #cd7f32; }
+
+.highscore-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+}
+
+.highscore-stats {
+    display: flex;
+    gap: 0.6rem;
+    flex-shrink: 0;
+    color: var(--text-muted);
+    font-size: 0.78rem;
+}
+
+.highscore-stats .highscore-territory {
+    color: #00f3ff;
+    font-weight: 600;
+}
+
+.highscore-empty {
+    padding: 0.6rem 0;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
 /* Minimap */
 .bottom-right {
     bottom: 20px;

@@ -185,6 +185,7 @@ class GameEngine {
         this.setupEventListeners();
         this.renderCharacterPicker();
         this.updateCoinBalanceDisplay();
+        this.renderHighScores();
 
         if (!this.progressStore.isStorageAvailable()) {
             this.showNotification('⚠️ Speicher blockiert: Münzen & Freischaltungen werden NICHT gespeichert (privater Modus?)', '#ff3333');
@@ -309,6 +310,36 @@ class GameEngine {
         }
     }
 
+    renderHighScores() {
+        const list = document.getElementById('highscore-list');
+        if (!list) return;
+
+        const scores = this.progressStore.getHighScores();
+        list.innerHTML = '';
+
+        if (scores.length === 0) {
+            const empty = document.createElement('li');
+            empty.className = 'highscore-empty';
+            empty.textContent = 'Noch keine Runden gespielt';
+            list.appendChild(empty);
+            return;
+        }
+
+        scores.forEach((entry, index) => {
+            const row = document.createElement('li');
+            row.className = 'highscore-row';
+            row.innerHTML = `
+                <span class="highscore-rank">#${index + 1}</span>
+                <span class="highscore-name">${escapeHtml(entry.name)}</span>
+                <span class="highscore-stats">
+                    <span class="highscore-territory">${entry.territory.toFixed(1)}%</span>
+                    <span>💀 ${entry.kills}</span>
+                </span>
+            `;
+            list.appendChild(row);
+        });
+    }
+
     renderCharacterPicker() {
         const picker = document.getElementById('character-picker');
         if (!picker) return;
@@ -420,6 +451,7 @@ class GameEngine {
             this.recapRank.innerText = '#1';
             this.eliminatedByText.innerText = 'Herzlichen Glückwunsch! Du hast den Kontinent vollständig erobert!';
             this.awardRunCoins();
+            this.recordHighScore(100); // Territory is exactly 100% on a world conquest
             this.showScreen(this.gameOverScreen);
         }, 1500);
     }
@@ -443,6 +475,22 @@ class GameEngine {
         }
 
         return earned;
+    }
+
+    /**
+     * Save this run's peak territory % / kills to the local high-score
+     * table (top 10, ranked by territory) and refresh the lobby list.
+     */
+    recordHighScore(territoryOverride = null) {
+        if (!this.player) return;
+
+        const territory = territoryOverride !== null ? territoryOverride : this.player.peakPercentage;
+        this.progressStore.addHighScore({
+            name: this.player.name,
+            territory,
+            kills: this.player.kills,
+        });
+        this.renderHighScores();
     }
 
     setupEventListeners() {
@@ -525,6 +573,7 @@ class GameEngine {
         restartBtn.addEventListener('click', () => {
             this.renderWorldLevels(); // Refresh levels progress and locks
             this.renderCharacterPicker(); // Refresh unlocked characters
+            this.renderHighScores(); // Refresh in case this run made the list
             this.showScreen(this.lobbyScreen);
         });
 
@@ -1547,6 +1596,7 @@ class GameEngine {
         this.eliminatedByText.innerText = this.player.deathReason || 'Du bist abgestürzt!';
 
         this.awardRunCoins();
+        this.recordHighScore();
         this.showScreen(this.gameOverScreen);
     }
 

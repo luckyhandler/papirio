@@ -110,6 +110,39 @@ export class ProgressStore {
         return unlocked;
     }
 
+    // Local high-score table: best runs ever played on this browser, ranked
+    // by peak territory %. Kept short (top 10) so it stays a "best of",
+    // not a full history.
+    getHighScores() {
+        try {
+            const raw = this.storage.getItem(this.keyPrefix + 'highscores');
+            const parsed = raw ? JSON.parse(raw) : [];
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (error) {
+            return [];
+        }
+    }
+
+    addHighScore(entry) {
+        const scores = this.getHighScores();
+        scores.push({
+            name: String(entry.name || 'Spieler').slice(0, 20),
+            territory: Math.max(0, Number(entry.territory) || 0),
+            kills: Math.max(0, Math.floor(Number(entry.kills) || 0)),
+            timestamp: Date.now(),
+        });
+        scores.sort((a, b) => b.territory - a.territory);
+        const top = scores.slice(0, 10);
+
+        try {
+            this.storage.setItem(this.keyPrefix + 'highscores', JSON.stringify(top));
+        } catch (error) {
+            // Storage may be unavailable in privacy mode.
+        }
+
+        return top;
+    }
+
     getOverallWorldConquest(levels) {
         if (!levels || typeof levels[Symbol.iterator] !== 'function') {
             return 0;
