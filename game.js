@@ -1441,6 +1441,11 @@ class GameEngine {
         // Clean up entity lists
         if (id === 'player') {
             this.screenShake = 26;
+            // Cut the music and play the stinger immediately on death, not
+            // after the recap-screen delay below — otherwise it lags the
+            // actual moment of dying by ~1.8s.
+            this.music.stop();
+            this.music.playGameOver();
             setTimeout(() => {
                 this.isPlaying = false;
                 this.showGameOver();
@@ -1522,8 +1527,6 @@ class GameEngine {
     }
 
     showGameOver() {
-        this.music.stop();
-        this.music.playGameOver();
         const totalPlayable = this.currentMode === 'world' ? this.playableCellsCount : (this.gridSize * this.gridSize);
         const finalScore = this.player.peakPercentage;
         this.recapScore.innerText = `${finalScore.toFixed(2)}%`;
