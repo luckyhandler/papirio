@@ -1,4 +1,5 @@
 import { Bot } from './bot.js';
+import { SynthMusic } from './src/audio/synth-music.js';
 import { BOT_NAMES, CELL_SIZE, CHARACTERS, GRID_SIZE, MAP_SIZE, NEON_COLORS, TICK_INTERVAL } from './src/config/game-config.js';
 import { countPlayableCells, isCellPlayable } from './src/domain/geometry.js';
 import { Player } from './src/domain/player.js';
@@ -168,6 +169,7 @@ class GameEngine {
         this.boundarySegments = [];
         this.levelCellCounts = {};
         this.progressStore = new ProgressStore(window.localStorage);
+        this.music = new SynthMusic();
 
         // Pre-calculate and cache level cell counts
         Object.keys(LEVELS).forEach(levelId => {
@@ -398,7 +400,8 @@ class GameEngine {
     handleWorldVictory() {
         if (!this.isPlaying) return;
         this.isPlaying = false;
-        
+        this.music.stop();
+
         // Save 100% progress
         this.progressStore.setLevelProgress(this.currentLevelId, 100);
         this.renderWorldLevels();
@@ -439,6 +442,27 @@ class GameEngine {
     }
 
     setupEventListeners() {
+        // Music Toggle
+        const musicToggleBtn = document.getElementById('music-toggle');
+        if (musicToggleBtn) {
+            const syncMusicButton = () => {
+                musicToggleBtn.textContent = this.music.muted ? '🔇' : '🔊';
+                musicToggleBtn.classList.toggle('muted', this.music.muted);
+            };
+            syncMusicButton();
+            musicToggleBtn.addEventListener('click', () => {
+                this.music.toggleMuted();
+                if (this.music.muted) {
+                    this.music.stop();
+                } else if (this.isPlaying) {
+                    // Only resume playback if a round is actually running —
+                    // music never plays outside of active gameplay.
+                    this.music.start();
+                }
+                syncMusicButton();
+            });
+        }
+
         // Mode Selector
         const modeClassic = document.getElementById('mode-classic');
         const modeWorld = document.getElementById('mode-world');
@@ -680,6 +704,13 @@ class GameEngine {
         this.gameStartTime = performance.now();
         this.lastTickTime = performance.now();
         this.lastTime = performance.now();
+
+        // "JETZT SPIELEN" is a user gesture, so this is where audio unlocks.
+        // Music only plays for the duration of the round.
+        this.music.ensureAudioReady();
+        if (!this.music.muted) {
+            this.music.start();
+        }
 
         this.showScreen(this.gameScreen);
         this.resizeCanvas();
@@ -1090,7 +1121,10 @@ class GameEngine {
             if (puIndex !== -1) {
                 const pu = this.powerUps[puIndex];
                 this.powerUps.splice(puIndex, 1); // Remove it
-                
+                if (entity.id === 'player') {
+                    this.music.playPowerUp(pu.type);
+                }
+
                 if (pu.type === 'speed') {
                     entity.speedBoostTime = 6000; // 6 seconds
                     this.showNotification(`<span style="color: ${entity.color}">${escapeHtml(entity.name)}</span> hat TURBO gesammelt! ⚡`, '#ffff00');
@@ -1122,6 +1156,7 @@ class GameEngine {
                     this.particles.push(new Particle(entity.gridX, entity.gridY, '#ffd700'));
                 }
                 if (entity.id === 'player') {
+                    this.music.playCoin(coin.value > 1);
                     this.updateHUD();
                 }
             }
@@ -1487,6 +1522,7 @@ class GameEngine {
     }
 
     showGameOver() {
+        this.music.stop();
         const totalPlayable = this.currentMode === 'world' ? this.playableCellsCount : (this.gridSize * this.gridSize);
         const finalScore = this.player.peakPercentage;
         this.recapScore.innerText = `${finalScore.toFixed(2)}%`;
