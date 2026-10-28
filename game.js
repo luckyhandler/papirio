@@ -114,6 +114,15 @@ class GameEngine {
         this.minimapCanvas = document.getElementById('minimap-canvas');
         this.minimapCtx = this.minimapCanvas.getContext('2d');
 
+        // Offscreen cache of the minimap's static layer (land shape,
+        // boundary outline, owned-cell fills). Rebuilding this from the
+        // full grid every frame was a major source of mobile stutter, so
+        // it's only redrawn when this.terrainVersion has advanced.
+        this.minimapBaseCanvas = document.createElement('canvas');
+        this.minimapBaseCanvas.width = this.minimapCanvas.width;
+        this.minimapBaseCanvas.height = this.minimapCanvas.height;
+        this.minimapBaseCtx = this.minimapBaseCanvas.getContext('2d');
+
         // Setup screen elements
         this.lobbyScreen = document.getElementById('lobby-screen');
         this.gameScreen = document.getElementById('game-screen');
@@ -163,6 +172,16 @@ class GameEngine {
         this.screenShake = 0;
         this.captureFlashes = [];
 
+        // Bumped whenever grid.ownerId changes, so the floor texture and
+        // minimap (each an expensive full-grid canvas redraw) only redo
+        // that work when territory actually changed, instead of every
+        // rendered frame — this is what was making mobile stutter. Each
+        // consumer tracks the last version it drew and compares against
+        // this counter, rather than a shared boolean, since both the 3D
+        // renderer and the minimap need to notice the same change.
+        this.terrainVersion = 0;
+        this.minimapTerrainVersion = -1;
+
         // Game Modes & Level State
         this.currentMode = 'classic'; // 'classic' or 'world'
         this.currentLevelId = 'classic';
@@ -199,6 +218,7 @@ class GameEngine {
 
     initGrid() {
         this.grid = [];
+        this.terrainVersion++;
         this.playableCellsCount = this.levelCellCounts[this.currentLevelId] || (this.gridSize * this.gridSize);
         
         const level = LEVELS[this.currentLevelId];
@@ -847,6 +867,7 @@ class GameEngine {
             }
         }
         entity.score = score;
+        this.terrainVersion++;
     }
 
     spawnBot() {
@@ -953,6 +974,7 @@ class GameEngine {
         }
 
         if (capturedCells.length > 0) {
+            this.terrainVersion++;
             this.captureFlashes.push({
                 ownerId: p.ownerId,
                 cells: capturedCells,
@@ -1433,6 +1455,7 @@ class GameEngine {
 
         entity.score = this.countOwnedCells(entity.id);
         entity.trail = [];
+        this.terrainVersion++;
 
         // Spawn visual flash particles
         this.createCaptureParticles(entity, capturedCount);
@@ -1495,6 +1518,8 @@ class GameEngine {
                 }
             }
         }
+
+        this.terrainVersion++;
 
         // Recalculate scores for killer if present
         if (killer) {
@@ -2186,6 +2211,7 @@ class GameEngine {
         entity.score = this.countOwnedCells(entity.id);
 
         if (capturedCells.length > 0) {
+            this.terrainVersion++;
             this.captureFlashes.push({
                 ownerId: entity.id,
                 cells: capturedCells,
@@ -2229,10 +2255,14 @@ class GameEngine {
         this.coins.push({ x, y, value });
     }
 
-    renderMinimap() {
-        const mCtx = this.minimapCtx;
-        const mWidth = this.minimapCanvas.width;
-        const mHeight = this.minimapCanvas.height;
+    // Redraws the static minimap layer (land shape, boundary outline, and
+    // owned-cell fills) into the cached offscreen canvas. This is the part
+    // that scans the full grid, so it only runs when terrainVersion has
+    // advanced — not on every one of the ~60 rendered frames per second.
+    drawMinimapBase() {
+        const mCtx = this.minimapBaseCtx;
+        const mWidth = this.minimapBaseCanvas.width;
+        const mHeight = this.minimapBaseCanvas.height;
 
         mCtx.clearRect(0, 0, mWidth, mHeight);
 
@@ -2251,7 +2281,7 @@ class GameEngine {
                 }
             }
             mCtx.fill();
-            
+
             // Draw boundary outline on minimap
             mCtx.strokeStyle = 'rgba(176, 38, 255, 0.4)';
             mCtx.lineWidth = 1.5;
@@ -2281,8 +2311,23 @@ class GameEngine {
             }
             mCtx.fill();
         });
+    }
 
-        // Draw entity head dots on minimap
+    renderMinimap() {
+        if (this.minimapTerrainVersion !== this.terrainVersion) {
+            this.drawMinimapBase();
+            this.minimapTerrainVersion = this.terrainVersion;
+        }
+
+        const mCtx = this.minimapCtx;
+        const mWidth = this.minimapCanvas.width;
+        const mHeight = this.minimapCanvas.height;
+        const ratio = mWidth / this.gridSize;
+
+        mCtx.clearRect(0, 0, mWidth, mHeight);
+        mCtx.drawImage(this.minimapBaseCanvas, 0, 0);
+
+        // Draw entity head dots on minimap (cheap: one per entity, every frame)
         this.entities.forEach(entity => {
             if (entity.isDead) return;
 

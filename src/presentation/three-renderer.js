@@ -58,6 +58,13 @@ export class ThreeRenderer {
         const width = window.innerWidth || 800;
         const height = window.innerHeight || 600;
 
+        // Mobile GPUs choke fastest on fragment-heavy settings: MSAA,
+        // high-res shadow maps, and rendering at a full 2x device pixel
+        // ratio. Detect once and dial those down so the frame stays smooth
+        // instead of stuttering.
+        this.isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
+        this.maxPixelRatio = this.isMobile ? 1.5 : 2;
+
         // 1. Scene
         this.scene = new THREE.Scene();
         this.scene.background = new THREE.Color(0x080912);
@@ -71,13 +78,13 @@ export class ThreeRenderer {
         // 3. WebGL Renderer
         this.renderer = new THREE.WebGLRenderer({
             canvas: this.canvas,
-            antialias: true,
+            antialias: !this.isMobile,
             powerPreference: 'high-performance'
         });
         this.renderer.setSize(width, height);
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.maxPixelRatio));
         this.renderer.shadowMap.enabled = true;
-        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        this.renderer.shadowMap.type = this.isMobile ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
         this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
         this.renderer.toneMappingExposure = 1.25;
 
@@ -88,8 +95,9 @@ export class ThreeRenderer {
         this.dirLight = new THREE.DirectionalLight(0xffffff, 1.4);
         this.dirLight.position.set(MAP_SIZE / 2 - 200, 500, MAP_SIZE / 2 - 200);
         this.dirLight.castShadow = true;
-        this.dirLight.shadow.mapSize.width = 2048;
-        this.dirLight.shadow.mapSize.height = 2048;
+        const shadowMapRes = this.isMobile ? 1024 : 2048;
+        this.dirLight.shadow.mapSize.width = shadowMapRes;
+        this.dirLight.shadow.mapSize.height = shadowMapRes;
         this.dirLight.shadow.camera.near = 50;
         this.dirLight.shadow.camera.far = 1600;
         const d = 450;
@@ -130,6 +138,18 @@ export class ThreeRenderer {
         this.floorCanvas.width = canvasRes;
         this.floorCanvas.height = canvasRes;
         this.floorCtx = this.floorCanvas.getContext('2d');
+
+        // Offscreen cache of the static terrain layer (background, cells,
+        // grid lines, territory fills/borders). Redrawing this from the
+        // full grid is expensive (O(gridSize^2 * entities)), so it's only
+        // rebuilt when game.terrainVersion has advanced since we last drew
+        // it — every other frame we just blit this cached bitmap instead.
+        this.terrainCanvas = document.createElement('canvas');
+        this.terrainCanvas.width = canvasRes;
+        this.terrainCanvas.height = canvasRes;
+        this.terrainCtx = this.terrainCanvas.getContext('2d');
+        this.lastTerrainVersion = -1;
+        this.hadFlashesLastFrame = false;
 
         this.floorTexture = new THREE.CanvasTexture(this.floorCanvas);
         this.floorTexture.generateMipmaps = false;
@@ -226,9 +246,57 @@ export class ThreeRenderer {
 
     updateFloorTexture(game) {
         if (!this.floorCtx) return;
+
+        const hasFlashes = !!(game.captureFlashes && game.captureFlashes.length > 0);
+        const terrainChanged = game.terrainVersion !== this.lastTerrainVersion;
+
+        // Nothing changed since last frame: the texture already shows the
+        // correct image, so skip all canvas work (and the GPU upload below).
+        if (!terrainChanged && !hasFlashes && !this.hadFlashesLastFrame) {
+            return;
+        }
+
+        if (terrainChanged) {
+            this.drawTerrainLayer(game);
+            this.lastTerrainVersion = game.terrainVersion;
+        }
+
         const ctx = this.floorCtx;
         const w = this.floorCanvas.width;
         const h = this.floorCanvas.height;
+        const scale = w / MAP_SIZE;
+        const cellPixelSize = CELL_SIZE * scale;
+
+        ctx.clearRect(0, 0, w, h);
+        ctx.drawImage(this.terrainCanvas, 0, 0);
+
+        // Capture flashes (cheap: only touches the cells in each flash)
+        if (hasFlashes) {
+            game.captureFlashes.forEach(flash => {
+                const owner = game.entities.find(e => e.id === flash.ownerId);
+                if (!owner) return;
+                const rgb = NEON_COLORS[owner.color] || { r: 255, g: 255, b: 255 };
+                ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${flash.opacity * 0.95})`;
+                ctx.beginPath();
+                flash.cells.forEach(c => {
+                    ctx.rect(c.x * cellPixelSize, c.y * cellPixelSize, cellPixelSize + 0.6, cellPixelSize + 0.6);
+                });
+                ctx.fill();
+            });
+        }
+        this.hadFlashesLastFrame = hasFlashes;
+
+        this.floorTexture.needsUpdate = true;
+    }
+
+    // Redraws the static terrain layer (background, playable cells, grid
+    // lines, territory fills/borders) into the cached offscreen canvas.
+    // Only called when game.terrainVersion has advanced — i.e. when
+    // territory ownership actually changed, not on every rendered frame.
+    drawTerrainLayer(game) {
+        const ctx = this.terrainCtx;
+        const w = this.terrainCanvas.width;
+        const h = this.terrainCanvas.height;
         const scale = w / MAP_SIZE;
         const cellPixelSize = CELL_SIZE * scale;
 
@@ -304,23 +372,6 @@ export class ThreeRenderer {
             }
             ctx.stroke();
         });
-
-        // Capture flashes
-        if (game.captureFlashes && game.captureFlashes.length > 0) {
-            game.captureFlashes.forEach(flash => {
-                const owner = game.entities.find(e => e.id === flash.ownerId);
-                if (!owner) return;
-                const rgb = NEON_COLORS[owner.color] || { r: 255, g: 255, b: 255 };
-                ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${flash.opacity * 0.95})`;
-                ctx.beginPath();
-                flash.cells.forEach(c => {
-                    ctx.rect(c.x * cellPixelSize, c.y * cellPixelSize, cellPixelSize + 0.6, cellPixelSize + 0.6);
-                });
-                ctx.fill();
-            });
-        }
-
-        this.floorTexture.needsUpdate = true;
     }
 
     getMaterial(colorHex, emissiveIntensity = 0.45) {
@@ -821,7 +872,7 @@ export class ThreeRenderer {
         this.camera.aspect = width / height;
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(width, height);
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.maxPixelRatio));
     }
 
     reset() {
