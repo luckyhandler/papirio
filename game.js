@@ -4,6 +4,7 @@ import { BOT_NAMES, CELL_SIZE, CHARACTERS, GRID_SIZE, MAP_SIZE, NEON_COLORS, TIC
 import { countPlayableCells, isCellPlayable } from './src/domain/geometry.js';
 import { Player } from './src/domain/player.js';
 import { ProgressStore } from './src/infrastructure/progress-store.js';
+import { fetchTopScores, submitScore } from './src/infrastructure/leaderboard-store.js';
 import { escapeHtml } from './src/presentation/escape-html.js';
 import { createLeaderboardItem } from './src/presentation/leaderboard.js';
 import { ThreeRenderer } from './src/presentation/three-renderer.js';
@@ -310,11 +311,25 @@ class GameEngine {
         }
     }
 
-    renderHighScores() {
+    /**
+     * Renders the shared, global top 10 (Firestore) when reachable; falls
+     * back to this browser's local high-score table when offline or if the
+     * request fails, so the lobby never shows an empty list.
+     */
+    async renderHighScores() {
         const list = document.getElementById('highscore-list');
         if (!list) return;
 
-        const scores = this.progressStore.getHighScores();
+        let scores = this.progressStore.getHighScores();
+        try {
+            const globalScores = await fetchTopScores(10);
+            if (globalScores.length > 0) {
+                scores = globalScores;
+            }
+        } catch (error) {
+            // Offline or Firestore unavailable - keep showing local scores.
+        }
+
         list.innerHTML = '';
 
         if (scores.length === 0) {
@@ -481,15 +496,18 @@ class GameEngine {
      * Save this run's peak territory % / kills to the local high-score
      * table (top 10, ranked by territory) and refresh the lobby list.
      */
-    recordHighScore(territoryOverride = null) {
+    async recordHighScore(territoryOverride = null) {
         if (!this.player) return;
 
         const territory = territoryOverride !== null ? territoryOverride : this.player.peakPercentage;
-        this.progressStore.addHighScore({
+        const entry = {
             name: this.player.name,
             territory,
             kills: this.player.kills,
-        });
+        };
+
+        this.progressStore.addHighScore(entry);
+        await submitScore(entry);
         this.renderHighScores();
     }
 
